@@ -1,10 +1,17 @@
+import pandas as pd
 
-class BrandwatchData:
+from .interface_data_source import IDataSource
 
-    def __init__(self):
-       pass
 
-    def read_brandwatch_data(data_directory, filter_platform_domain_set, is_using_s3):
+class BrandwatchData(IDataSource):
+
+    def get_data(self) -> pd.DataFrame:
+        pass
+
+    def __init__(self, in_source_folder):
+        self.source_folder = in_source_folder
+
+    def read_brandwatch_data(self, filter_platform_domain_set, is_using_s3):
         """
         Reads data from all the csv files in the given directory
         :param data_directory: Path to the directory that contains the csv files
