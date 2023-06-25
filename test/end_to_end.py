@@ -1,18 +1,20 @@
+""" Include containing folder for testing """
 import sys, os
-
-#from ing.src import ing
-
 sys.path.insert(0, os.path.abspath('.'))
 print(os.path.abspath('.'))
 
-import pandas as pd
+""" Test in local pycharm env"""
+#from ing.src import ing
 
 # from ing.src import S3Access
+import pandas as pd
+
+""" Test in aws"""
 from src import ing
 
 folder = "C:\\STUFF\\RESEARCH\\smyrna\\Smyrna\\data_collection\\test_ing"
 
-rd = ing.AllDataReader()
+rd = ing.AnyDataSourceReader()
 print(rd)
 paths = rd.get_file_paths_list(folder)
 print(paths)
