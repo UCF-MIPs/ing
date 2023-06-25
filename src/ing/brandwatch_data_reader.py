@@ -57,7 +57,7 @@ class BrandwatchDataReader(IDataSourceReader):
 
     def read_data_files_list(self, in_file_path_list: List[str]) -> pd.DataFrame:
         """
-        Reads all "*.csv" files that have the from of Brandwatch mentions file structure.
+        Reads all files that have the from of Brandwatch mentions file structure.
         Removes duplicates based on the source_msg_id ("URL") column.
         """
         result_df = pd.concat([self.read_data_file(data_file) for data_file in in_file_path_list])

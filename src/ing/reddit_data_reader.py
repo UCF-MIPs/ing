@@ -46,6 +46,10 @@ class RedditDataReader(IDataSourceReader):
                          dtype={key: str for key in self.reddit_submissions_column_dict},
                          usecols=self.required_reddit_submissions_column_names)
         df = df.rename(columns=self.reddit_submissions_column_dict)
+        df['parent_source_msg_id'] = ""
+        df['platform'] = "reddit"
+        df['article_url'] = ""
+        df['parent_source_user_id'] = ""
         return df
 
     def read_reddit_comments_file(self, in_file_path: str) -> pd.DataFrame:
@@ -53,6 +57,10 @@ class RedditDataReader(IDataSourceReader):
                          dtype={key: str for key in self.reddit_comments_column_dict},
                          usecols=self.required_reddit_comments_column_names)
         df = df.rename(columns=self.reddit_comments_column_dict)
+        df['title'] = df['content']
+        df['platform'] = "reddit"
+        df['article_url'] = ""
+        df['parent_source_user_id'] = ""
         return df
 
     def read_data_file(self, in_file_path: str, in_supress_exception: bool = True) -> Optional[pd.DataFrame]:

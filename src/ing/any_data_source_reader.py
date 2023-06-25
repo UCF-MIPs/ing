@@ -7,6 +7,7 @@ import s3fs
 
 from .reddit_data_reader import RedditDataReader
 from .brandwatch_data_reader import BrandwatchDataReader
+from .fourchan_data_reader import FourChanDataReader
 
 
 class AnyDataSourceReader:
@@ -14,6 +15,7 @@ class AnyDataSourceReader:
     def __init__(self):
         self.reddit_reader = RedditDataReader()
         self.bw_reader = BrandwatchDataReader()
+        self.fourchan_reader = FourChanDataReader()
 
     def read_data_file(self, in_file_path: str) -> pd.DataFrame:
         df = None
@@ -21,6 +23,8 @@ class AnyDataSourceReader:
             df = self.bw_reader.read_data_file(in_file_path)
         if df is None:
             df = self.reddit_reader.read_data_file(in_file_path)
+        if df is None:
+            df = self.fourchan_reader.read_data_file(in_file_path)
         return df
 
     def read_files_list(self, in_file_path_list: List[str]) -> pd.DataFrame:
@@ -33,7 +37,8 @@ class AnyDataSourceReader:
         result_df.reset_index(drop=True, inplace=True)
         return result_df
 
-    def get_file_paths_list(self, in_source_folder, in_is_from_s3=False, in_s3_object: s3fs.S3FileSystem = None) -> List[str]:
+    def get_file_paths_list(self, in_source_folder, in_is_from_s3=False, in_s3_object: s3fs.S3FileSystem = None) -> \
+    List[str]:
         """
         Get list of all "*.csv" files form the source_folder path.
         """
