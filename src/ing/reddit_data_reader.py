@@ -42,9 +42,9 @@ class RedditDataReader(IDataSourceReader):
                                                       self.reddit_comments_column_dict[com_col] in self.required_columns]
 
     def read_reddit_submissions_file(self, in_file_path: str) -> pd.DataFrame:
-        df = pd.read_csv(in_file_path, parse_dates=['datetime'],
-                         dtype={key: str for key in self.reddit_submissions_column_dict},
+        df = pd.read_csv(in_file_path, dtype={key: str for key in self.reddit_submissions_column_dict},
                          usecols=self.required_reddit_submissions_column_names)
+        df['datetime'] = pd.to_datetime(df['datetime'], format="%Y-%m-%d %H:%M:%S.%f", utc=True)
         df = df.rename(columns=self.reddit_submissions_column_dict)
         df['parent_source_msg_id'] = ""
         df['platform'] = "reddit"
@@ -53,10 +53,9 @@ class RedditDataReader(IDataSourceReader):
         return df
 
     def read_reddit_comments_file(self, in_file_path: str) -> pd.DataFrame:
-        df = pd.read_csv(in_file_path, parse_dates=['datetime'],
-                         dtype={key: str for key in self.reddit_comments_column_dict},
+        df = pd.read_csv(in_file_path, dtype={key: str for key in self.reddit_comments_column_dict},
                          usecols=self.required_reddit_comments_column_names)
-        df = df.rename(columns=self.reddit_comments_column_dict)
+        df['datetime'] = pd.to_datetime(df['datetime'], format="%Y-%m-%d %M:%H:%S.%f", utc=True)
         df['title'] = df['content']
         df['platform'] = "reddit"
         df['article_urls'] = ""
