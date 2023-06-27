@@ -48,7 +48,7 @@ class RedditDataReader(IDataSourceReader):
         df = df.rename(columns=self.reddit_submissions_column_dict)
         df['parent_source_msg_id'] = ""
         df['platform'] = "reddit"
-        df['article_url'] = ""
+        df['article_urls'] = ""
         df['parent_source_user_id'] = ""
         return df
 
@@ -59,7 +59,7 @@ class RedditDataReader(IDataSourceReader):
         df = df.rename(columns=self.reddit_comments_column_dict)
         df['title'] = df['content']
         df['platform'] = "reddit"
-        df['article_url'] = ""
+        df['article_urls'] = ""
         df['parent_source_user_id'] = ""
         return df
 

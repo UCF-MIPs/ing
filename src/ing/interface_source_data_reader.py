@@ -6,7 +6,7 @@ import pandas as pd
 
 class IDataSourceReader(metaclass=abc.ABCMeta):
     required_columns = ['datetime', 'source_msg_id', 'source_user_id', 'content', 'title', 'parent_source_msg_id',
-                        'parent_source_user_id', 'platform', 'article_url']
+                        'parent_source_user_id', 'platform', 'article_urls']
 
     @classmethod
     def __subclasshook__(cls, subclass):

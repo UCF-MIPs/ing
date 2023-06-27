@@ -39,7 +39,7 @@ class FourChanDataReader(IDataSourceReader):
         df['parent_source_msg_id'] = ""
         df['parent_source_user_id'] = ""
         df['platform'] = '4chan'
-        df['article_url'] = ""
+        df['article_urls'] = ""
         return df
 
     def read_data_file(self, in_file_path: str, in_supress_exception: bool = True) -> Optional[pd.DataFrame]:
