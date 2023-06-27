@@ -31,9 +31,9 @@ class FourChanDataReader(IDataSourceReader):
             [self.fourchan_column_dict[col] for col in self.required_4chan_column_names]))
 
     def read_4chan_file(self, in_file_path: str) -> pd.DataFrame:
-        df = pd.read_csv(in_file_path, parse_dates=['datetime'],
-                         dtype={key: str for key in self.fourchan_column_dict},
+        df = pd.read_csv(in_file_path, dtype={key: str for key in self.fourchan_column_dict},
                          usecols=self.required_4chan_column_names)
+        df['datetime'] = pd.to_datetime(df['datetime'], format="%Y-%m-%d %H:%M:%S.%f", utc=True)
         df = df.rename(columns=self.fourchan_column_dict)
         df['title'] = df['content']
         df['parent_source_msg_id'] = ""
