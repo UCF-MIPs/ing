@@ -8,13 +8,13 @@ from .interface_source_data_reader import IDataSourceReader
 class BrandwatchDataReader(IDataSourceReader):
     bw_gui_column_dict = {'Date': 'datetime', 'Author': 'source_user_id', 'Full Text': 'content', 'Title': 'title',
                           'Thread Id': 'parent_source_msg_id', 'Thread Author': 'parent_source_user_id',
-                          'Domain': 'platform', 'Expanded URLs': 'article_url', 'Url': 'source_msg_id'}
+                          'Domain': 'platform', 'Expanded URLs': 'article_urls', 'Url': 'source_msg_id'}
 
     bw_api_column_dict = {'date': 'datetime', 'author': 'source_user_id', 'fullText': 'content', 'title': 'title',
                           'threadId': 'parent_source_msg_id', 'threadAuthor': 'parent_source_user_id',
-                          'domain': 'platform', 'expandedUrls': 'article_url', 'url': 'source_msg_id'}
+                          'domain': 'platform', 'expandedUrls': 'article_urls', 'url': 'source_msg_id'}
 
-    # required_columns = ['datetime', 'source_msg_id', 'source_user_id', 'content', 'title', 'parent_source_msg_id', 'parent_source_user_id', 'platform', 'article_url']
+    # required_columns = ['datetime', 'source_msg_id', 'source_user_id', 'content', 'title', 'parent_source_msg_id', 'parent_source_user_id', 'platform', 'article_urls']
 
     def __init__(self):
         """
@@ -26,14 +26,15 @@ class BrandwatchDataReader(IDataSourceReader):
                                              if self.bw_api_column_dict[api_col] in self.required_columns]
 
     def read_bw_gui_file(self, in_file_path: str) -> pd.DataFrame:
-        df = pd.read_csv(in_file_path, skiprows=6, parse_dates=['Date'],
+        df = pd.read_csv(in_file_path, skiprows=6,
                          dtype={key: str for key in self.bw_gui_column_dict},
                          usecols=self.required_bw_gui_column_names)
+        df['Date'] = pd.to_datetime(df['Date'], format="%Y-%m-%d %H:%M:%S.%f", utc=True)
         df = df.rename(columns=self.bw_gui_column_dict)
         return df
 
     def read_bw_api_file(self, in_file_path: str) -> pd.DataFrame:
-        df = pd.read_csv(in_file_path, parse_dates=['date'],
+        df = pd.read_csv(in_file_path, parse_dates=['date'], date_format="%Y-%m-%dT%H:%M:%S.%f%z",
                          dtype={key: str for key in self.bw_api_column_dict},
                          usecols=self.required_bw_api_column_names)
         df = df.rename(columns=self.bw_api_column_dict)
