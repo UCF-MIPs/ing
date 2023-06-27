@@ -49,4 +49,5 @@ class AnyDataSourceReader:
             prefix_path = 's3://'
         else:
             data_files = glob.glob(os.path.join(in_source_folder, "*"))
+            data_files = [file for file in data_files if not os.path.isdir(file)]
         return [f"{prefix_path}{file_path}" for file_path in data_files]
