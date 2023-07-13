@@ -1,53 +1,74 @@
-""" Include containing folder for testing """
+
+""" Include containing DATA_DIRECTORY for testing """
 import sys, os
+import datetime
+
 sys.path.insert(0, os.path.abspath('.'))
 print(os.path.abspath('.'))
+# ---------------------------------------
 
-""" Test in local pycharm env"""
-#from ing.src import ing
-
+""" 
+Test in local pycharm env:
+    Uncomment the lines below to test in local machine.
+    Otherwise keep them commented 
+"""
+# from ing.src import ing
 # from ing.src import S3Access
-import pandas as pd
+# -----------------------------
 
-""" Test in aws"""
+
+""" 
+Test in aws:
+    Uncomment the lines below to test on aws sagemaker. 
+    Otherwise keep them commented.
+"""
 from src import ing
+# -----------------------------
 
-folder = "C:\\STUFF\\RESEARCH\\smyrna\\Smyrna\\data_collection\\test_ing"
 
-rd = ing.AnyDataSourceReader()
-print(rd)
-paths = rd.get_file_paths_list(folder)
-print(paths)
-df = rd.read_files_list(paths)
-print(df)
+"""
+Usual module/package imports go below here
+"""
+import pandas as pd
+# -----------------------------
 
-# S3_INPUT_BRANDWATCH_DIR = 's3://mips-main/initial_data_collection/raw_data/brandwatch'
-# S3_NEWS_DOMAIN_TUFM_FILE = "s3://mips-main-2/UFTM_classification-v2/news_table-v3-UT60.csv"
-#
-#
-# def read_domain_to_class_classification():
-#     tufmdf = pd.read_csv(S3_NEWS_DOMAIN_TUFM_FILE)
-#     tufmdf.rename(columns={'Domain': 'news_domain'}, inplace=True)
-#     assert set(tufmdf['tufm_class'].unique()) == {'TF', 'TM', 'UF', 'UM'}, "News domains should belong to one of the classes in {'TF', 'TM', 'UF', 'UM'}"
-#     news_domain_to_tufm_class = tufmdf.set_index('news_domain')['tufm_class'].to_dict()
-#     return news_domain_to_tufm_class
-#
-# print("1")
-# news_domain_to_tufm_class = read_domain_to_class_classification()
-#
-# print("2")
-# news_domain_identifier = ing.NewsDomainIdentifier(news_domain_to_tufm_class.keys())
-#
-# print("3")
-# bd = ing.BrandwatchData(S3_INPUT_BRANDWATCH_DIR, True)
-# print(bd)
-#
-# print("4")
-# bw_df = bd.get_data()
-# print(bw_df)
-#
-# print(bw_df.info())
+DATA_DIRECTORY = "C:\\STUFF\\RESEARCH\\smyrna\\Smyrna\\data_collection\\test_ing"
+NEWS_DOMAIN_TO_CLASS_FILE = "C:\\STUFF\\RESEARCH\\smyrna\\Smyrna\\data_collection\\news_table-v3-UT60.csv"
+START_DATE = datetime.datetime(2018, 3, 1, tzinfo=datetime.timezone.utc)
+END_DATE = datetime.datetime(2018, 5, 1, tzinfo=datetime.timezone.utc)
+FREQUENCY = '6H'
+MIN_PLAT_SIZE = 30
+MIN_ACTIVITY_PER_MONTH = 15
 
-#
-# s3a = S3Access()
-# print(s3a.get_buckets_list())
+
+if __name__ == "__main__":
+
+    # Read input files
+    any_source_reader = ing.AnyDataSourceReader()
+    paths = any_source_reader.get_file_paths_list(DATA_DIRECTORY)
+    print(paths)
+    all_osn_msgs_df = any_source_reader.read_files_list(paths)
+    print(all_osn_msgs_df)
+
+    news_domain_classes_df = pd.read_csv(NEWS_DOMAIN_TO_CLASS_FILE,
+                                         usecols=['Domain', 'tufm_class', 'Language'])
+    news_domain_classes_df.rename(columns={'Domain': 'news_domain', 'tufm_class': 'class', 'Language': 'lang'},
+                                  inplace=True)
+
+    # let data manager handle data
+    data_manager = ing.DataManager(all_osn_msgs_df, ".")
+
+    # preprocess
+    data_manager.preprocess(news_domain_classes_df, START_DATE, END_DATE)
+
+    # generate tables
+    min_msg_count = MIN_ACTIVITY_PER_MONTH * (END_DATE - START_DATE).days // 30
+    print(f"minimum message count : {min_msg_count}")
+    data_manager.generate_data_tables(MIN_PLAT_SIZE, min_msg_count)
+
+    print("calculating te...")
+    te_calculator = ing.TransferEntropyCalculator(data_manager)
+    te_df = te_calculator.calculate_te_network(datetime.datetime(2018, 3, 5, tzinfo=datetime.timezone.utc), datetime.datetime(2018, 3, 10, tzinfo=datetime.timezone.utc), FREQUENCY)
+
+    print("all done!")
+
