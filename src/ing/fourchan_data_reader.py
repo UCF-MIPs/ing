@@ -38,7 +38,7 @@ class FourChanDataReader(IDataSourceReader):
         df['title'] = df['content']
         df['parent_source_msg_id'] = ""
         df['parent_source_user_id'] = ""
-        df['platform'] = '4chan'
+        df['platform'] = "4chan.org"
         df['article_urls'] = ""
         return df
 
