@@ -45,36 +45,43 @@ class DataManager:
             Preprocessed dataframe is returned.
         """
         #  0. Filter out dates
+        print("Filter out dates...")
         if in_start_date is not None:
             self.all_osn_msgs_df = self.all_osn_msgs_df[(in_start_date <= self.all_osn_msgs_df['datetime'])]
         if in_end_date is not None:
             self.all_osn_msgs_df = self.all_osn_msgs_df[(self.all_osn_msgs_df['datetime'] <= in_end_date)]
 
         #  1. Remove nan
+        print("#Remove nan...")
         self.all_osn_msgs_df = self.all_osn_msgs_df[~(self.all_osn_msgs_df['datetime'].isna() |
                                                     self.all_osn_msgs_df['platform'].isna() |
                                                     self.all_osn_msgs_df['source_user_id'].isna() |
                                                     self.all_osn_msgs_df['source_msg_id'].isna())].reset_index(drop=True)
         #  2. Add article count column
+        print("Add article count column...")
         self.all_osn_msgs_df['article_urls_count'] = self.all_osn_msgs_df['article_urls'].apply(
             lambda x: x.count(', ') + 1 if type(x) is str else 0)
 
         #  3. add msg_id
+        print("add msg_id...")
         self.all_osn_msgs_df.rename_axis("msg_id", inplace=True)
         self.all_osn_msgs_df.reset_index(inplace=True)
         self.all_osn_msgs_df["msg_id"] = self.all_osn_msgs_df["msg_id"].apply(lambda x: f"m{x}")
 
         # 4. identify news_domains
+        print("identify news_domains...")
         ndi = NewsDomainIdentifier(in_news_domain_classes_df['news_domain'].unique())
         self.all_osn_msgs_df['news_domains'] = self.all_osn_msgs_df['article_urls'].apply(
             lambda x: ndi.find_all_matches(x) if type(x) is str else [])
 
         # 5. identify class of each news_domain
+        print("identify class of each news_domain...")
         ndc = NewsDomainClassifier(in_news_domain_classes_df, {'TF', 'TM', 'UF', 'UM'})
         self.all_osn_msgs_df['classes'] = self.all_osn_msgs_df['news_domains'].apply(
             lambda x: [ndc.get_class(nd) for nd in x])
 
         # 6. counts of each class marked at each class_X column
+        print("counts of each class marked at each class_X column...")
         self.all_osn_msgs_df[['class_TM', 'class_TF', 'class_UM', 'class_UF']] = self.all_osn_msgs_df['classes'].apply(
             lambda x: pd.Series([x.count('TM'), x.count('TF'), x.count('UM'), x.count('UF')]))
 
