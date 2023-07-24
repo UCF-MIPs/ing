@@ -1,21 +1,41 @@
 import os.path
 import datetime
+from typing import List
+
 import pandas as pd
 
 from .news_domain_classifier import NewsDomainClassifier
 from .news_domain_identifier import NewsDomainIdentifier
+from .any_data_source_reader import AnyDataSourceReader
 
 
 class DataManager:
+    """
+    Keeps track of all data in memory.
 
-    def __init__(self, in_all_osn_msgs_df: pd.DataFrame, in_output_dir_path: str):
-        self.all_osn_msgs_df = in_all_osn_msgs_df
+    Attributes
+    ----------
+        output_dir_path : str
+            The location of csv data files
+        all_osn_msgs_df : pd.DataFrame
+        filtered_osn_msgs_view_df : pd.DataFrame
+            Filtered values from all_osn_msgs_df to fit a given StartDate and EndDate criteria.
+        indv_actors_df : pd.DataFrame
+            Individual actors dataframe. This DataFrame will contain user_id, actor_id relationship and other required columns.
+    """
+    def __init__(self, in_output_dir_path: str):
         self.output_dir_path = in_output_dir_path
         self.next_actor_idx = 0
         self.all_users = None
         self.actors_df = None
         self.platform_actors_df = None
         self.indv_actors_df = None
+        self.all_osn_msgs_df = None
+        self.filtered_osn_msgs_view_df = self.all_osn_msgs_df
+
+    def read_data_files(self, in_data_file_paths_list: List[str]):
+        adsr = AnyDataSourceReader()
+        self.all_osn_msgs_df = adsr.read_files_list(in_data_file_paths_list)
         self.filtered_osn_msgs_view_df = self.all_osn_msgs_df
 
     def preprocess(self, in_news_domain_classes_df: pd.DataFrame,
