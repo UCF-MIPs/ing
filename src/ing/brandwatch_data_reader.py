@@ -8,36 +8,44 @@ from .interface_source_data_reader import IDataSourceReader
 class BrandwatchDataReader(IDataSourceReader):
     bw_gui_column_dict = {'Date': 'datetime', 'Author': 'source_user_id', 'Full Text': 'content', 'Title': 'title',
                           'Thread Id': 'parent_source_msg_id', 'Thread Author': 'parent_source_user_id',
-                          'Domain': 'platform', 'Expanded URLs': 'article_urls', 'Url': 'source_msg_id'}
+                          'Domain': 'platform', 'Url': 'source_msg_id'}
+
+    bw_gui_url_columns = ['Url', 'Display URLs', 'Expanded URLs', 'Media URLs', 'Original Url', 'Short URLs',
+                          'Thread URL', 'Broadcast Media Url', 'Title', 'Full Text']
 
     bw_api_column_dict = {'date': 'datetime', 'author': 'source_user_id', 'fullText': 'content', 'title': 'title',
                           'threadId': 'parent_source_msg_id', 'threadAuthor': 'parent_source_user_id',
-                          'domain': 'platform', 'expandedUrls': 'article_urls', 'url': 'source_msg_id'}
+                          'domain': 'platform', 'url': 'source_msg_id'}
 
-    # required_columns = ['datetime', 'source_msg_id', 'source_user_id', 'content', 'title', 'parent_source_msg_id', 'parent_source_user_id', 'platform', 'article_urls']
+    bw_api_url_columns = ['url', 'displayUrls', 'expandedUrls', 'mediaUrls', 'originalUrl', 'shortUrls',
+                          'threadUrl', 'broadcastMediaUrl', 'title', 'fullText']
 
     def __init__(self):
         """
         Generates a Brandwatch data reader object.
         """
         self.required_bw_gui_column_names = [gui_col for gui_col in self.bw_gui_column_dict
-                                             if self.bw_gui_column_dict[gui_col] in self.required_columns]
+                                             if self.bw_gui_column_dict[gui_col] in self.required_columns] + self.bw_gui_url_columns
         self.required_bw_api_column_names = [api_col for api_col in self.bw_api_column_dict
-                                             if self.bw_api_column_dict[api_col] in self.required_columns]
+                                             if self.bw_api_column_dict[api_col] in self.required_columns] + self.bw_api_url_columns
 
     def read_bw_gui_file(self, in_file_path: str) -> pd.DataFrame:
         df = pd.read_csv(in_file_path, skiprows=6,
                          dtype={key: str for key in self.bw_gui_column_dict},
                          usecols=self.required_bw_gui_column_names)
         df['Date'] = pd.to_datetime(df['Date'], format="%Y-%m-%d %H:%M:%S.%f", utc=True)
-        df = df.rename(columns=self.bw_gui_column_dict)
+        df['search_article_urls'] = df.apply(lambda row: ", ".join([row[col] for col in self.bw_gui_url_columns if type(row[col]) is str]), axis=1)
+        df.rename(columns=self.bw_gui_column_dict, inplace=True)
+        df.drop(columns=self.bw_gui_url_columns, errors='ignore', inplace=True)
         return df
 
     def read_bw_api_file(self, in_file_path: str) -> pd.DataFrame:
         df = pd.read_csv(in_file_path, parse_dates=['date'], date_format="%Y-%m-%dT%H:%M:%S.%f%z",
                          dtype={key: str for key in self.bw_api_column_dict},
                          usecols=self.required_bw_api_column_names)
-        df = df.rename(columns=self.bw_api_column_dict)
+        df['search_article_urls'] = df.apply(lambda row: ", ".join([row[col] for col in self.bw_api_url_columns if type(row[col]) is str]), axis=1)
+        df.rename(columns=self.bw_api_column_dict, inplace=True)
+        df.drop(columns=self.bw_api_url_columns, errors='ignore', inplace=True)
         return df
 
     def read_data_file(self, in_file_path: str, in_supress_exception: bool = True) -> Optional[pd.DataFrame]:
