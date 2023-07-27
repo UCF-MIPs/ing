@@ -14,5 +14,4 @@ def detect_URLs(s):
 				urls.append(token)
 	return urls
 
-if __name__ == '__main__':
-	main()
+

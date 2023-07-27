@@ -18,7 +18,7 @@ class BrandwatchDataReader(IDataSourceReader):
                           'domain': 'platform', 'url': 'source_msg_id'}
 
     bw_api_url_columns = ['url', 'displayUrls', 'expandedUrls', 'mediaUrls', 'originalUrl', 'shortUrls',
-                          'threadUrl', 'broadcastMediaUrl', 'title', 'fullText']
+                          'threadURL', 'broadcastMediaUrl', 'title', 'fullText']
 
     def __init__(self):
         """

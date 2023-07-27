@@ -17,8 +17,6 @@ def compute_super_class_timeseries(in_class_to_timeseries):
                                               dtype=np.int32),
                                 "M": np.array(np.logical_or(in_class_to_timeseries["TM"], in_class_to_timeseries["UM"]),
                                               dtype=np.int32)}
-    superclass_to_timeseries["*"] = np.array(
-        np.logical_or(superclass_to_timeseries["T"], superclass_to_timeseries["U"]), dtype=np.int32)
     return superclass_to_timeseries
 
 
@@ -53,7 +51,7 @@ def get_actor_time_series(in_actor_id: str, in_data_manager: DataManager, in_dat
         class_to_timeseries[this_class] = actors_binary_timeseries
     if in_add_superclasses:
         class_to_timeseries.update(compute_super_class_timeseries(class_to_timeseries))
-        class_to_timeseries["all"] = actor_events_df.set_index("datetime").resample(in_frequency).size().apply(
+        class_to_timeseries["*"] = actor_events_df.set_index("datetime").resample(in_frequency).size().apply(
             lambda x: 1 if x > 0 else 0).rename("events").reindex(in_datetime_index, fill_value=0).values
     return class_to_timeseries
 
@@ -73,15 +71,17 @@ def calculate_transfer_entropy_data(in_src_idx: int, in_src_actor_id: str, in_tg
 
 class TransferEntropyCalculator:
 
-    def __init__(self, in_data_manager: DataManager, in_classes: List[str] = None):
-        if in_classes is None:
-            in_classes = ["TF", "TM", "UF", "UM", "T", "U", "F", "M", "*", "all"]
+    def __init__(self, in_data_manager: DataManager, in_sub_classes: List[str] = None,
+                 in_add_superclasses: bool = True):
+        if in_sub_classes is None:
+            in_sub_classes = ["TF", "TM", "UF", "UM", "T", "U", "F", "M", "*"]
         self.data_manager = in_data_manager
+        self.add_superclasses = in_add_superclasses
         self.start_date = None
         self.end_date = None
         self.frequency = None
         self.datetime_index = None
-        self.__init_comparison_pairs_list(in_classes)
+        self.__init_comparison_pairs_list(in_sub_classes)
 
     def calculate_te_network(self, in_start_date: datetime.datetime, in_end_date: datetime.datetime, in_frequency: str):
         self.start_date = in_start_date
@@ -104,7 +104,7 @@ class TransferEntropyCalculator:
         # c = 0
         for src in in_classes:
             for tgt in in_classes:
-                if (src in {"*", "all"} and tgt in {"*", "all"}) or \
+                if (src == "*" and tgt == "*") or \
                         (src in {"T", "U"} and tgt in {"T", "U"}) or \
                         (src in {"F", "M"} and tgt in {"F", "M"}) or \
                         (src in {"TF", "TM", "UF", "UM"} and tgt in {"TF", "TM", "UF", "UM"}):
@@ -132,7 +132,7 @@ class TransferEntropyCalculator:
         -------
             A list containing the timeseries dicts of each actor
         """
-        params_list = [[actor_id, self.data_manager, self.datetime_index, self.frequency]
+        params_list = [[actor_id, self.data_manager, self.datetime_index, self.frequency, self.add_superclasses]
                        for actor_id in self.data_manager.actors_df.index]
         with multiprocessing.Pool(multiprocessing.cpu_count() - 1) as p:
             results = p.starmap(get_actor_time_series, params_list)

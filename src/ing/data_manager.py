@@ -1,12 +1,14 @@
 import os.path
 import datetime
-from typing import List
+from typing import List, Tuple
 
 import pandas as pd
 
 from .news_domain_classifier import NewsDomainClassifier
 from .news_domain_identifier import NewsDomainIdentifier
 from .any_data_source_reader import AnyDataSourceReader
+from .url_expander import URLExpander
+from .time_keeper import TimeKeeper
 
 
 class DataManager:
@@ -17,26 +19,54 @@ class DataManager:
     ----------
         output_dir_path : str
             The location of csv data files
+        state : Literal["NO_DATA", "RAW_DATA", "CLEAN_DATA", "TABLE_DATA"]
+            A string that describes the current state of the DataManager.
         all_osn_msgs_df : pd.DataFrame
         filtered_osn_msgs_view_df : pd.DataFrame
             Filtered values from all_osn_msgs_df to fit a given StartDate and EndDate criteria.
         indv_actors_df : pd.DataFrame
             Individual actors dataframe. This DataFrame will contain user_id, actor_id relationship and other required columns.
     """
+
     def __init__(self, in_output_dir_path: str):
         self.output_dir_path = in_output_dir_path
         self.next_actor_idx = 0
-        self.all_users = None
+        self.state = "NO_DATA"
+        self.all_users_df = None
         self.actors_df = None
-        self.platform_actors_df = None
+        self.plat_actors_df = None
+        self.indv_actors_df = None
+        self.all_osn_msgs_df = None
+        self.filtered_osn_msgs_view_df = self.all_osn_msgs_df
+        self.reset(in_output_dir_path)  # added for consistency
+
+    def reset(self, in_output_dir_path: str = None):
+        self.output_dir_path = in_output_dir_path
+        self.next_actor_idx = 0
+        self.state = "NO_DATA"
+        self.all_users_df = None
+        self.actors_df = None
+        self.plat_actors_df = None
         self.indv_actors_df = None
         self.all_osn_msgs_df = None
         self.filtered_osn_msgs_view_df = self.all_osn_msgs_df
 
     def read_data_files(self, in_data_file_paths_list: List[str]):
         adsr = AnyDataSourceReader()
+        if self.state != "NO_DATA":
+            print(f"ERROR: Some data already exists!\nDataManager state is {self.state}")
+            return
+        tk = TimeKeeper("Reading data")
         self.all_osn_msgs_df = adsr.read_files_list(in_data_file_paths_list)
         self.filtered_osn_msgs_view_df = self.all_osn_msgs_df
+        self.state = "RAW_DATA"
+        tk.done()
+
+    def __generate_article_urls_column(self, in_all_osn_msgs_msgid_and_text_values: List[Tuple[str, str]]) -> List[str]:
+        URLex = URLExpander()
+        for msg_id, text in in_all_osn_msgs_msgid_and_text_values:
+            URLex.consume_potential_urls_from_text(msg_id, text)
+        self.all_osn_msgs_df["article_urls"] = self.all_osn_msgs_df["msg_id"].apply(lambda x: str(URLex.get_article_urls(x)))
 
     def preprocess(self, in_news_domain_classes_df: pd.DataFrame,
                    in_start_date: datetime.datetime = None, in_end_date: datetime.datetime = None):
@@ -64,46 +94,59 @@ class DataManager:
         -------
             Preprocessed dataframe is returned.
         """
+
+        if self.state != "RAW_DATA":
+            print(f"ERROR: RAW_DATA does not exist!\nDataManager state is {self.state}")
+            return
+
         #  0. Filter out dates
-        print("Filter out dates...")
+        tk = TimeKeeper("Filter out dates")
         if in_start_date is not None:
             self.all_osn_msgs_df = self.all_osn_msgs_df[(in_start_date <= self.all_osn_msgs_df['datetime'])]
         if in_end_date is not None:
             self.all_osn_msgs_df = self.all_osn_msgs_df[(self.all_osn_msgs_df['datetime'] <= in_end_date)]
+        print(f"Number of data points in between [{in_start_date}] --> [{in_end_date}] duration : ({self.all_osn_msgs_df.shape[0]})")
 
         #  1. Remove nan
-        print("#Remove nan...")
+        tk.next("Remove nan")
         self.all_osn_msgs_df = self.all_osn_msgs_df[~(self.all_osn_msgs_df['datetime'].isna() |
-                                                    self.all_osn_msgs_df['platform'].isna() |
-                                                    self.all_osn_msgs_df['source_user_id'].isna() |
-                                                    self.all_osn_msgs_df['source_msg_id'].isna())].reset_index(drop=True)
-        #  2. Add article count column
-        print("Add article count column...")
-        self.all_osn_msgs_df['article_urls_count'] = self.all_osn_msgs_df['article_urls'].apply(
-            lambda x: x.count(', ') + 1 if type(x) is str else 0)
+                                                      self.all_osn_msgs_df['platform'].isna() |
+                                                      self.all_osn_msgs_df['source_user_id'].isna() |
+                                                      self.all_osn_msgs_df['source_msg_id'].isna())].reset_index(
+            drop=True)
 
-        #  3. add msg_id
-        print("add msg_id...")
+        #  2. add msg_id
+        tk.next("add msg_id")
         self.all_osn_msgs_df.rename_axis("msg_id", inplace=True)
         self.all_osn_msgs_df.reset_index(inplace=True)
         self.all_osn_msgs_df["msg_id"] = self.all_osn_msgs_df["msg_id"].apply(lambda x: f"m{x}")
 
+        #  3. Add article urls related columns
+        tk.next("Add article urls related columns")
+        self.__generate_article_urls_column(self.all_osn_msgs_df[['msg_id', 'search_article_urls']].values)
+        self.all_osn_msgs_df['article_urls_count'] = self.all_osn_msgs_df['article_urls'].apply(
+            lambda x: x.count(', ') + 1 if type(x) is str else 0)
+        # self.all_osn_msgs_df = self.all_osn_msgs_df[self.all_osn_msgs_df['article_urls_count'] > 0]
+
         # 4. identify news_domains
-        print("identify news_domains...")
+        tk.next("identify news_domains")
         ndi = NewsDomainIdentifier(in_news_domain_classes_df['news_domain'].unique())
         self.all_osn_msgs_df['news_domains'] = self.all_osn_msgs_df['article_urls'].apply(
             lambda x: ndi.find_all_matches(x) if type(x) is str else [])
 
         # 5. identify class of each news_domain
-        print("identify class of each news_domain...")
+        tk.next("identify class of each news_domain")
         ndc = NewsDomainClassifier(in_news_domain_classes_df, {'TF', 'TM', 'UF', 'UM'})
         self.all_osn_msgs_df['classes'] = self.all_osn_msgs_df['news_domains'].apply(
             lambda x: [ndc.get_class(nd) for nd in x])
 
         # 6. counts of each class marked at each class_X column
-        print("counts of each class marked at each class_X column...")
+        tk.next("counts of each class marked at each class_X column")
         self.all_osn_msgs_df[['class_TM', 'class_TF', 'class_UM', 'class_UF']] = self.all_osn_msgs_df['classes'].apply(
             lambda x: pd.Series([x.count('TM'), x.count('TF'), x.count('UM'), x.count('UF')]))
+
+        self.state = "CLEAN_DATA"
+        tk.done()
 
     def generate_data_tables(self, in_min_platform_size: int, in_min_user_messages_count: int):
         """
@@ -115,18 +158,24 @@ class DataManager:
         in_min_user_messages_count :
             Minimum number of messages created by a filtered actor
         """
+        if self.state != "CLEAN_DATA":
+            print(f"ERROR: CLEAN_DATA does not exist!\nDataManager state is {self.state}")
+            return
+
+        tk = TimeKeeper("Generating data tables")
         self.__generate_user_id()
         self.__generate_platform_actor_id(in_min_platform_size)
         self.__generate_individual_actor_id(in_min_user_messages_count)
         # set indexes
         self.all_osn_msgs_df.set_index("msg_id", inplace=True)
-        self.all_users.set_index("user_id", inplace=True)
+        self.all_users_df.set_index("user_id", inplace=True)
         self.actors_df.set_index("actor_id", inplace=True)
-        self.platform_actors_df.set_index("actor_id", inplace=True)
+        self.plat_actors_df.set_index("actor_id", inplace=True)
         self.indv_actors_df.set_index("actor_id", inplace=True)
         # save files
         self.__save_data_files()
-        print("data table generation completed.")
+        self.state = "TABLE_DATA"
+        tk.done()
 
     def filter_osn_msgs_view(self, in_start_date: datetime.datetime, in_end_date: datetime.datetime):
         self.filtered_osn_msgs_view_df = self.all_osn_msgs_df[(in_start_date <= self.all_osn_msgs_df['datetime']) &
@@ -144,7 +193,7 @@ class DataManager:
             else:
                 return self.all_osn_msgs_df[self.all_osn_msgs_df["user_id"] == user_id]
         if actor_type == "plat":
-            platform = self.platform_actors_df.loc[in_actor_id]["platform"]
+            platform = self.plat_actors_df.loc[in_actor_id]["platform"]
             # print(f"plat : {platform}")
             if in_use_filtered_view:
                 return self.filtered_osn_msgs_view_df[self.filtered_osn_msgs_view_df["platform"] == platform]
@@ -153,12 +202,13 @@ class DataManager:
         return None
 
     def __save_data_files(self):
-        print("saving data files to disk ...")
-        self.__save_csv_zip_file(self.all_users, "users_df")
+        tk = TimeKeeper("saving data files to disk")
+        self.__save_csv_zip_file(self.all_users_df, "all_users_df")
         self.__save_csv_zip_file(self.all_osn_msgs_df, 'all_osn_msgs_df')
         self.__save_csv_zip_file(self.actors_df, "actors_df")
         self.__save_csv_zip_file(self.indv_actors_df, "indv_actors_df")
-        self.__save_csv_zip_file(self.platform_actors_df, "plat_actors_df")
+        self.__save_csv_zip_file(self.plat_actors_df, "plat_actors_df")
+        tk.done()
 
     def __save_csv_zip_file(self, in_dataframe: pd.DataFrame, in_file_name: str):
         file_path = os.path.join(self.output_dir_path, f'{in_file_name}.csv.zip')
@@ -174,28 +224,29 @@ class DataManager:
         in_dump_temp :
             Saves the data generated as temp_*.csv file/s
         """
-        print("generating user_id values ...")
-        # create user_id and all_users object
+
+        tk = TimeKeeper("generating user_id values")
+        # create user_id and all_users_df object
         temp_users_1 = self.all_osn_msgs_df.groupby(["platform", "source_user_id"], dropna=False).size().reset_index()[
             ["platform", "source_user_id"]]
         temp_users_2 = \
             self.all_osn_msgs_df.groupby(["platform", "parent_source_user_id"], dropna=False).size().reset_index()[
                 ["platform", "parent_source_user_id"]].rename(columns={"parent_source_user_id": "source_user_id"})
-        self.all_users = pd.concat([temp_users_1, temp_users_2])
-        self.all_users.drop_duplicates(subset=["platform", "source_user_id"], inplace=True, ignore_index=True)
-        self.all_users = self.all_users.groupby(["platform", "source_user_id"], dropna=False).size().rename(
+        self.all_users_df = pd.concat([temp_users_1, temp_users_2])
+        self.all_users_df.drop_duplicates(subset=["platform", "source_user_id"], inplace=True, ignore_index=True)
+        self.all_users_df = self.all_users_df.groupby(["platform", "source_user_id"], dropna=False).size().rename(
             'num_users').reset_index().drop(columns=["num_users"]).rename_axis("user_id").reset_index()
-        self.all_users["user_id"] = self.all_users["user_id"].apply(lambda x: f"u{x}")
+        self.all_users_df["user_id"] = self.all_users_df["user_id"].apply(lambda x: f"u{x}")
         user_num_msgs = self.all_osn_msgs_df.groupby(["platform", "source_user_id"], dropna=False).size().rename(
             'msgs_count').reset_index()
-        self.all_users = self.all_users.merge(user_num_msgs, how='left', on=["platform", "source_user_id"])
-        self.all_users["msgs_count"].fillna(0, inplace=True)
+        self.all_users_df = self.all_users_df.merge(user_num_msgs, how='left', on=["platform", "source_user_id"])
+        self.all_users_df["msgs_count"].fillna(0, inplace=True)
         if in_dump_temp:
-            self.__save_csv_zip_file(self.all_users, "temp_users_df")
+            self.__save_csv_zip_file(self.all_users_df, "temp_users_df")
 
-        print("updating all_osn_msgs ....")
+        tk.next("updating all_osn_msgs")
         # add user_id column to all_osn_msgs_df
-        src_user_to_user_id = self.all_users.set_index(["platform", "source_user_id"])["user_id"].to_dict()
+        src_user_to_user_id = self.all_users_df.set_index(["platform", "source_user_id"])["user_id"].to_dict()
         self.all_osn_msgs_df[['user_id', 'parent_user_id']] = self.all_osn_msgs_df.apply(lambda row: pd.Series([
             src_user_to_user_id[(row['platform'], row['source_user_id'])],
             src_user_to_user_id[(row['platform'], row['parent_source_user_id'])]
@@ -204,7 +255,9 @@ class DataManager:
             self.__save_csv_zip_file(self.all_osn_msgs_df, 'temp_all_osn_msgs_df')
 
         self.actors_df = pd.DataFrame([],
-                                      columns=["actor_id", "actor_type", "actor_label", "actor_long_label", "num_users"])
+                                      columns=["actor_id", "actor_type", "actor_label", "actor_long_label",
+                                               "num_users"])
+        tk.done()
 
     def __create_actor_ids(self, inout_actors_df: pd.DataFrame):
         """
@@ -228,10 +281,10 @@ class DataManager:
         in_dump_temp :
             Saves the data generated as temp_*.csv file/s
         """
-        print("generating actor_id values for individuals ...")
+        tk = TimeKeeper("generating actor_id values for individuals")
         user_reception = self.all_osn_msgs_df["parent_user_id"].value_counts().rename(
             "received_share_count").rename_axis("user_id").reset_index()
-        self.indv_actors_df = self.all_users.merge(user_reception, on="user_id", how="left")
+        self.indv_actors_df = self.all_users_df.merge(user_reception, on="user_id", how="left")
         self.indv_actors_df["received_share_count"].fillna(0, inplace=True)
         self.indv_actors_df = self.indv_actors_df.rename_axis("actor_id").reset_index()
         self.__create_actor_ids(self.indv_actors_df)
@@ -239,11 +292,13 @@ class DataManager:
             self.indv_actors_df = self.indv_actors_df[self.indv_actors_df["msgs_count"] >= in_min_messages_count]
         indv_actors = self.indv_actors_df.apply(lambda row: pd.Series(
             [row["actor_id"], "indv", row["source_user_id"], "{}: @{}".format(row["platform"], row["source_user_id"]),
-             1]), axis=1).rename(columns={0: "actor_id", 1: "actor_type", 2: "actor_label", 3: "actor_long_label", 4: "num_users"})
+             1]), axis=1).rename(
+            columns={0: "actor_id", 1: "actor_type", 2: "actor_label", 3: "actor_long_label", 4: "num_users"})
         self.actors_df = pd.concat([self.actors_df, indv_actors])
         if in_dump_temp:
             self.__save_csv_zip_file(self.indv_actors_df, "temp_indv_actors_df")
             self.__save_csv_zip_file(self.actors_df, "temp_actors_df")
+        tk.done()
 
     def __generate_platform_actor_id(self, in_min_size: int = None, in_dump_temp: bool = False):
         """
@@ -256,20 +311,19 @@ class DataManager:
         in_dump_temp :
             Saves the data generated as temp_*.csv file/s
         """
-        print("generating actor_id values for platforms ...")
+        tk = TimeKeeper("generating actor_id values for platforms")
         # create actor_ids for platforms
-        self.platform_actors_df = self.all_osn_msgs_df["platform"].value_counts().rename(
+        self.plat_actors_df = self.all_osn_msgs_df["platform"].value_counts().rename(
             "users_count").reset_index().rename_axis("actor_id").reset_index()
-        self.__create_actor_ids(self.platform_actors_df)
+        self.__create_actor_ids(self.plat_actors_df)
         if in_min_size is not None:
-            self.platform_actors_df = self.platform_actors_df[self.platform_actors_df["users_count"] >= in_min_size]
-        plat_actors = self.platform_actors_df.apply(
+            self.plat_actors_df = self.plat_actors_df[self.plat_actors_df["users_count"] >= in_min_size]
+        plat_actors = self.plat_actors_df.apply(
             lambda row: pd.Series([row["actor_id"], "plat", row["platform"], row["platform"], row["users_count"]]),
             axis=1).rename(
             columns={0: "actor_id", 1: "actor_type", 2: "actor_label", 3: "actor_long_label", 4: "num_users"})
         self.actors_df = pd.concat([self.actors_df, plat_actors])
         if in_dump_temp:
-            self.__save_csv_zip_file(self.platform_actors_df, "temp_plat_actors_df")
+            self.__save_csv_zip_file(self.plat_actors_df, "temp_plat_actors_df")
             self.__save_csv_zip_file(self.actors_df, "temp_actors_df")
-
-
+        tk.done()
