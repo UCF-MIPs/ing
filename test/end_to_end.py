@@ -40,21 +40,25 @@ import pandas as pd
 import glob
 # -----------------------------
 
-# DATA_DIRECTORY_LIST = ["s3://mips-main/initial_data_collection/raw_data/brandwatch/", "s3://mips-main/initial_data_collection/TE_ready_data/V2/"]
+# DATA_DIRECTORY_LIST = ["s3://mips-main/initial_data_collection/raw_data/brandwatch/", "s3://mips-main/initial_data_collection/TE_ready_data/V2/"]  # DONE
+DATA_DIRECTORY_LIST = ["s3://mips-phase-2/initial_query_data/raw_data/brandwatch/"]
 #DATA_DIRECTORY_LIST = [ "C:/STUFF/RESEARCH/Brandwatch/mariupol_hospital_clean", "C:/STUFF/RESEARCH/smyrna/Smyrna/data_collection/test_ing"]
-DATA_DIRECTORY_LIST = ["C:/STUFF/RESEARCH/smyrna/Smyrna/data_collection/test_ing/indv"]
-# NEWS_DOMAIN_TO_CLASS_FILE = "s3://mips-main-2/UFTM_classification-v2/news_table-v3-UT60.csv"
-NEWS_DOMAIN_TO_CLASS_FILE = "C:/STUFF/RESEARCH/Brandwatch/news_table-v3-UT60.csv"
-START_DATE = datetime.datetime(2018, 3, 1, tzinfo=datetime.timezone.utc)
-END_DATE = datetime.datetime(2022, 5, 2, tzinfo=datetime.timezone.utc)
+# DATA_DIRECTORY_LIST = ["C:/STUFF/RESEARCH/smyrna/Smyrna/data_collection/test_ing/indv"]
+
+NEWS_DOMAIN_TO_CLASS_FILE = "s3://mips-main-2/UFTM_classification-v2/news_table-v3-UT60.csv"
+# NEWS_DOMAIN_TO_CLASS_FILE = "C:/STUFF/RESEARCH/Brandwatch/news_table-v3-UT60.csv"
+
+START_DATE = datetime.datetime(2022, 1, 1, tzinfo=datetime.timezone.utc)
+END_DATE = datetime.datetime(2022, 5, 1, tzinfo=datetime.timezone.utc)
 FREQUENCY = '6H'
-MIN_PLAT_SIZE = 100
-MIN_ACTIVITY_PER_MONTH = 15
+MIN_PLAT_SIZE = 500
+MIN_ACTIVITY_PER_MONTH = 30
+MIN_TOTAL_RECEIVED_RETWEETS = 15
 
 paths = []
 for data_dir in DATA_DIRECTORY_LIST:
-    paths += glob.glob(os.path.join(data_dir, "*.csv*"))
-# paths = [f"s3://{p}" for p in paths]
+    paths += s3.glob(os.path.join(data_dir, "*.csv*"))
+paths = [f"s3://{p}" for p in paths]
 print(paths)
 
 news_domain_classes_df = pd.read_csv(NEWS_DOMAIN_TO_CLASS_FILE,
@@ -78,7 +82,7 @@ if __name__ == "__main__":
 
     print(f"minimum message count : {min_msg_count}")
 
-    data_manager.generate_data_tables(MIN_PLAT_SIZE, 100)
+    data_manager.generate_data_tables(MIN_PLAT_SIZE, min_msg_count)
 
     print(f"Start: {START_DATE} \nEnd: {END_DATE}")
     print(f"Period length: {END_DATE - START_DATE}")
@@ -91,8 +95,10 @@ if __name__ == "__main__":
           data_manager.actors_df[(data_manager.actors_df["actor_type"] == "plat") &
                                  (data_manager.actors_df["num_users"] > MIN_PLAT_SIZE)].reset_index())
 
-    actor_id_list = data_manager.actors_df.index[:]
-    # actor_id_list
+    # actor_id_list = data_manager.indv_actors_df.index[:]
+    
+    actor_id_list = data_manager.indv_actors_df[(data_manager.indv_actors_df["msgs_count"] > min_msg_count) & (data_manager.indv_actors_df["received_share_count"] > MIN_TOTAL_RECEIVED_RETWEETS)].index.to_list()
+    print(f"Actors #: {len(actor_id_list)}")
 
     # profiler_obj = cProfile.Profile()
     # profiler_obj.enable()
@@ -107,7 +113,7 @@ if __name__ == "__main__":
     print("all done!")
 
     compression_options = dict(method='zip', archive_name='actor_te_edges_df.csv')
-    te_df.to_csv("./OUTPUTS/actor_te_edges_df.csv.zip", index=False, compression=compression_options)
+    te_df.to_csv(f"./OUTPUTS/indv_mc{min_msg_count}_rr{MIN_TOTAL_RECEIVED_RETWEETS}_actor_te_edges_df.csv.zip", index=False, compression=compression_options)
     print("saved")
 
     # stats = pstats.Stats(profiler_obj).strip_dirs().sort_stats("cumtime")
