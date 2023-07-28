@@ -111,6 +111,51 @@ class TransferEntropyCalculator:
         self.datetime_index = None
         self.__init_comparison_pairs_list(in_sub_classes)
 
+    @staticmethod
+    def calculate_a_date_series(in_start_date: datetime.datetime, in_end_date: datetime.datetime,
+                                in_shift_days: int, in_init_window_days: int, in_as_growing: bool):
+        # Get the moving/growing window start points for the given duration by the given shift size
+        print(f"Start Date : {in_start_date}")
+        print(f"End Date : {in_end_date}")
+        print(f"Window Shift By : {in_shift_days}")
+        print(f"Init Window Size : {in_init_window_days}")
+        dynamic_windows = pd.date_range(start=in_start_date, end=in_end_date, freq=f"{in_shift_days}D",
+                                        inclusive='left')
+        # print(dynamic_windows)
+        init_window = datetime.timedelta(days=in_init_window_days)
+        # Moving/Growing windows start and end dates
+        dwindows_df = pd.DataFrame({
+            'start_date': pd.Series(dynamic_windows[0] if in_as_growing else dw for dw in dynamic_windows),
+            'end_date': pd.Series([dw + init_window for dw in dynamic_windows])
+        })
+        # remove days that are out of end date boundary
+        dwindows_df = dwindows_df[dwindows_df['end_date'] < in_end_date + datetime.timedelta(days=in_shift_days)]
+        return dwindows_df
+
+    # def calculate_te_network_series(self, in_actor_id_list: List[str],
+    #                                 in_start_date: datetime.datetime,
+    #                                 in_end_date: datetime.datetime,
+    #                                 in_frequency: str,
+    #                                 in_window_shift_by_days):
+    #     # Get the moving/growing window start points for the given duration by the given shift size
+    #     print(f"Start Date : {in_start_date}")
+    #     print(f"End Date : {in_end_date}")
+    #     print(f"Window Shift By : {WINDOW_SHIFT_BY_DAYS}")
+    #     print(f"Init Window Size : {INIT_WINDOW_SIZE}")
+    #     dynamic_windows = pd.date_range(start=in_start_date, end=in_end_date, freq=f"{WINDOW_SHIFT_BY_DAYS}D",
+    #                                     inclusive='left')
+    #     print(dynamic_windows)
+    #
+    #     # Moving/Growing windows start and end dates
+    #     IS_GROWING_WINDOW = True
+    #     dwindows_df = pd.DataFrame({
+    #         'start_date': pd.Series(dynamic_windows[0] if IS_GROWING_WINDOW else dw for dw in dynamic_windows),
+    #         'end_date': pd.Series([dw + INIT_WINDOW_SIZE for dw in dynamic_windows])
+    #     })
+    #     # remove days that are out of end date boundary
+    #     dwindows_df = dwindows_df[dwindows_df['end_date'] < in_end_date + datetime.timedelta(days=WINDOW_SHIFT_BY_DAYS)]
+    #     dwindows_df
+
     def calculate_te_network_step1(self, in_actor_id_list: List[str], in_start_date: datetime.datetime, in_end_date: datetime.datetime, in_frequency: str):
         self.start_date = in_start_date
         self.end_date = in_end_date
