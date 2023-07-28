@@ -54,6 +54,9 @@ FREQUENCY = '6H'
 MIN_PLAT_SIZE = 500
 MIN_ACTIVITY_PER_MONTH = 30
 MIN_TOTAL_RECEIVED_RETWEETS = 15
+WINDOW_SHIFT_BY_DAYS = 7
+INIT_WINDOW_SIZE_BY_DAYS = 7
+AS_GROWING = True
 
 paths = []
 for data_dir in DATA_DIRECTORY_LIST:
@@ -67,6 +70,12 @@ news_domain_classes_df.rename(columns={'Domain': 'news_domain', 'tufm_class': 'c
                               inplace=True)
 
 if __name__ == "__main__":
+
+    required_dirs = ["./OUTPUTS", "./OUTPUTS/dynamic", "./OUTPUTS/dynamic/growing", "./OUTPUTS/dynamic/moving"]
+    for target_dir in required_dirs:
+        if not os.path.exists(target_dir):
+            os.mkdir(target_dir)
+
     # let data manager handle data
     data_manager = ing.DataManager("./OUTPUTS")
     data_manager.read_data_files(paths)
@@ -100,21 +109,25 @@ if __name__ == "__main__":
     actor_id_list = data_manager.indv_actors_df[(data_manager.indv_actors_df["msgs_count"] > min_msg_count) & (data_manager.indv_actors_df["received_share_count"] > MIN_TOTAL_RECEIVED_RETWEETS)].index.to_list()
     print(f"Actors #: {len(actor_id_list)}")
 
-    # profiler_obj = cProfile.Profile()
-    # profiler_obj.enable()
-    print("calculating te...")
-    te_calculator = ing.TransferEntropyCalculator(data_manager, in_add_superclasses=False)
-    current_start_date = START_DATE
-    current_end_date = END_DATE
-    actor_timeseries_dict_list = te_calculator.calculate_te_network_step1(actor_id_list, current_start_date, current_end_date, FREQUENCY)
-    print(actor_timeseries_dict_list)
-    te_df = te_calculator.calculate_te_network_step2(actor_id_list, actor_timeseries_dict_list)
-    # profiler_obj.disable()
-    print("all done!")
+    data_windows_df = ing.TransferEntropyCalculator.calculate_a_date_series(START_DATE, END_DATE, WINDOW_SHIFT_BY_DAYS, INIT_WINDOW_SIZE_BY_DAYS, AS_GROWING)
 
-    compression_options = dict(method='zip', archive_name='actor_te_edges_df.csv')
-    te_df.to_csv(f"./OUTPUTS/indv_mc{min_msg_count}_rr{MIN_TOTAL_RECEIVED_RETWEETS}_actor_te_edges_df.csv.zip", index=False, compression=compression_options)
-    print("saved")
+    for idx, row in data_windows_df.iterrows():
+        # profiler_obj = cProfile.Profile()
+        # profiler_obj.enable()
+        print("calculating te...")
+        te_calculator = ing.TransferEntropyCalculator(data_manager, in_add_superclasses=False)
+        current_start_date = row["start_date"]
+        current_end_date = row["end_date"]
+        actor_timeseries_dict_list = te_calculator.calculate_te_network_step1(actor_id_list, current_start_date, current_end_date, FREQUENCY)
+        print(actor_timeseries_dict_list)
+        te_df = te_calculator.calculate_te_network_step2(actor_id_list, actor_timeseries_dict_list)
+        # profiler_obj.disable()
+        print("all done!")
+        file_name = "actor_te_edges_df_{}_{}".format(str(current_start_date).replace("-", "_"), str(current_end_date).replace("-", "_"))
+        folder_type = "growing" if AS_GROWING else "moving"
+        compression_options = dict(method='zip', archive_name=f'{file_name}.csv')
+        te_df.to_csv(f"./OUTPUTS/dynamic/{folder_type}/{file_name}.csv.zip", index=False, compression=compression_options)
+        print("saved")
 
     # stats = pstats.Stats(profiler_obj).strip_dirs().sort_stats("cumtime")
     # stats.print_stats(50)  # top 10 rows
