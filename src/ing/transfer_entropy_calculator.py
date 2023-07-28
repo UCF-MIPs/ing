@@ -56,10 +56,35 @@ def get_actor_time_series(in_actor_id: str, in_data_manager: DataManager, in_dat
     return class_to_timeseries
 
 
-def calculate_transfer_entropy_data(in_src_idx: int, in_src_actor_id: str, in_tgt_idx: int, in_tgt_actor_id: str,
+def calculate_transfer_entropy_data(in_src_idx: int, in_src_actor_id: str,
+                                    in_tgt_idx: int, in_tgt_actor_id: str,
                                     in_comparison_pairs_list: List[Tuple[str]],
-                                    in_actor_timeseries_dict_list: List[Dict[str, np.ndarray]]) -> List[
-    Union[str, float]]:
+                                    in_actor_timeseries_dict_list: List[Dict[str, np.ndarray]]) -> List[Union[str, float]]:
+    """
+    Calculates the comparison pair values using transfer entorpy and prepares it for directly using as a row on
+    actor_te_edges_df dataframe.
+
+    Parameters
+    ----------
+    in_src_idx :
+        Index of the source actor in the in_actor_timeseries_dict_list
+    in_src_actor_id :
+        actor_id of the source actor
+    in_tgt_idx :
+        Index of the target actor in the in_actor_timeseries_dict_list
+    in_tgt_actor_id :
+        actor_id of the target actor
+    in_comparison_pairs_list :
+        comparison pairs list of classes
+    in_actor_timeseries_dict_list :
+        A list which contains "actor timeseries dicts"
+
+    Returns
+    -------
+        A list which contains [src_actor_id, tgt_actor_id, te_val0, te_val1, ...., te_valN]
+        Where src_actor_id, and tgt_actor_id are actor ids of source and target actors, and
+         te_valN is the corresponding TE value for the given comparison pair at Nth index in in_comparison_pairs_list.
+    """
     print(f" {in_src_idx}->{in_tgt_idx} ")
     te_values_list = [pyinform.transfer_entropy(in_actor_timeseries_dict_list[in_src_idx][src_class],
                                                 in_actor_timeseries_dict_list[in_tgt_idx][tgt_class], 1) for
@@ -83,7 +108,7 @@ class TransferEntropyCalculator:
         self.datetime_index = None
         self.__init_comparison_pairs_list(in_sub_classes)
 
-    def calculate_te_network(self, in_start_date: datetime.datetime, in_end_date: datetime.datetime, in_frequency: str):
+    def calculate_te_network(self, in_actor_id_list: List[str], in_start_date: datetime.datetime, in_end_date: datetime.datetime, in_frequency: str):
         self.start_date = in_start_date
         self.end_date = in_end_date
         self.frequency = in_frequency
@@ -92,9 +117,9 @@ class TransferEntropyCalculator:
         self.data_manager.filter_osn_msgs_view(self.start_date, self.end_date)
 
         print("calculating actor timeseries dictionaries...")
-        actor_timeseries_dict_list = self.__calculate_actor_to_timeseries_dict_list()
+        actor_timeseries_dict_list = self.__calculate_actor_to_timeseries_dict_list(in_actor_id_list)
         print("calculating te sets...")
-        all_te_data = self.__calculate_transfer_entropy_sets(actor_timeseries_dict_list)
+        all_te_data = self.__calculate_transfer_entropy_sets(in_actor_id_list, actor_timeseries_dict_list)
         print("creating dataframe...")
         return pd.DataFrame(all_te_data,
                             columns=["Source", "Target"] + [f"{src}_{tgt}" for src, tgt in self.comparison_pairs_list])
@@ -112,18 +137,18 @@ class TransferEntropyCalculator:
                     # print(c, src, tgt, f"{src}->{tgt}")
                     # c += 1
 
-    def __calculate_transfer_entropy_sets(self, in_actor_timeseries_dict_list: List[Dict[str, np.ndarray]]):
-        params_list = [[src_idx, self.data_manager.actors_df.index[src_idx],
-                        tgt_idx, self.data_manager.actors_df.index[tgt_idx],
+    def __calculate_transfer_entropy_sets(self, in_actor_id_list: List[str], in_actor_timeseries_dict_list: List[Dict[str, np.ndarray]]):
+        params_list = [[src_idx, in_actor_id_list[src_idx],
+                        tgt_idx, in_actor_id_list[tgt_idx],
                         self.comparison_pairs_list, in_actor_timeseries_dict_list]
-                       for src_idx in range(self.data_manager.actors_df.shape[0])
-                       for tgt_idx in range(self.data_manager.actors_df.shape[0])
+                       for src_idx in range(len(in_actor_id_list))
+                       for tgt_idx in range(len(in_actor_id_list))
                        if src_idx != tgt_idx]
         with multiprocessing.Pool(multiprocessing.cpu_count() - 1) as p:
             results = p.starmap(calculate_transfer_entropy_data, params_list)
         return results
 
-    def __calculate_actor_to_timeseries_dict_list(self) -> List[Dict[str, np.ndarray]]:
+    def __calculate_actor_to_timeseries_dict_list(self, in_actor_id_list: List[str]) -> List[Dict[str, np.ndarray]]:
         """
         Calculates a list of dictionaries.
         Order of the list is correspondent to the index of actors_df of DataManager
@@ -133,7 +158,7 @@ class TransferEntropyCalculator:
             A list containing the timeseries dicts of each actor
         """
         params_list = [[actor_id, self.data_manager, self.datetime_index, self.frequency, self.add_superclasses]
-                       for actor_id in self.data_manager.actors_df.index]
+                       for actor_id in in_actor_id_list]
         with multiprocessing.Pool(multiprocessing.cpu_count() - 1) as p:
             results = p.starmap(get_actor_time_series, params_list)
         return results
