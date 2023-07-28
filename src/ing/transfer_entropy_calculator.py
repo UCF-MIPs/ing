@@ -40,7 +40,7 @@ def get_actor_time_series(in_actor_id: str, in_data_manager: DataManager, in_dat
     -------
         Dictionary containing timeseries of the actor for each class.
     """
-    # print(f" E:{in_actor_id} ")
+    print(f" E:{in_actor_id} ", end=" ")
     actor_events_df = in_data_manager.get_actors_msgs(in_actor_id, True)
     class_to_timeseries = {}
     for this_class in ["TF", "TM", "UF", "UM"]:
@@ -85,7 +85,7 @@ def calculate_transfer_entropy_data(in_src_idx: int, in_src_actor_id: str,
         Where src_actor_id, and tgt_actor_id are actor ids of source and target actors, and
          te_valN is the corresponding TE value for the given comparison pair at Nth index in in_comparison_pairs_list.
     """
-    print(f" {in_src_idx}->{in_tgt_idx} ")
+    print(f" {in_src_idx}->{in_tgt_idx} ", end=" ")
     te_values_list = [pyinform.transfer_entropy(in_actor_timeseries_dict_list[in_src_idx][src_class],
                                                 in_actor_timeseries_dict_list[in_tgt_idx][tgt_class], 1) for
                       src_class, tgt_class in in_comparison_pairs_list]
