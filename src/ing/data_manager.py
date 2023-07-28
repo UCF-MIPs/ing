@@ -1,3 +1,4 @@
+import multiprocessing
 import os.path
 import datetime
 from typing import List, Tuple
@@ -9,6 +10,10 @@ from .news_domain_identifier import NewsDomainIdentifier
 from .any_data_source_reader import AnyDataSourceReader
 from .url_expander import URLExpander
 from .time_keeper import TimeKeeper
+
+
+def ndi_find_all_matches(ndi, x):
+    return ndi.find_all_matches(x) if type(x) is str else []
 
 
 class DataManager:
@@ -62,11 +67,13 @@ class DataManager:
         self.state = "RAW_DATA"
         tk.done()
 
-    def __generate_article_urls_column(self, in_all_osn_msgs_msgid_and_text_values: List[Tuple[str, str]]) -> List[str]:
+    def __generate_article_urls_columns(self, in_all_osn_msgs_msgid_and_text_values: List[Tuple[str, str]]) -> List[str]:
         URLex = URLExpander()
         for msg_id, text in in_all_osn_msgs_msgid_and_text_values:
             URLex.consume_potential_urls_from_text(msg_id, text)
-        self.all_osn_msgs_df["article_urls"] = self.all_osn_msgs_df["msg_id"].apply(lambda x: str(URLex.get_article_urls(x)))
+        self.all_osn_msgs_df["article_urls"] = self.all_osn_msgs_df["msg_id"].apply(lambda x: URLex.get_article_urls(x))
+        self.all_osn_msgs_df["article_urls_count"] = self.all_osn_msgs_df["article_urls"].apply(lambda x: len(x))
+        self.all_osn_msgs_df["article_urls"] = self.all_osn_msgs_df["article_urls"].apply(lambda x: str(x))
 
     def preprocess(self, in_news_domain_classes_df: pd.DataFrame,
                    in_start_date: datetime.datetime = None, in_end_date: datetime.datetime = None):
@@ -123,16 +130,18 @@ class DataManager:
 
         #  3. Add article urls related columns
         tk.next("Add article urls related columns")
-        self.__generate_article_urls_column(self.all_osn_msgs_df[['msg_id', 'search_article_urls']].values)
-        self.all_osn_msgs_df['article_urls_count'] = self.all_osn_msgs_df['article_urls'].apply(
-            lambda x: x.count(', ') + 1 if type(x) is str else 0)
-        # self.all_osn_msgs_df = self.all_osn_msgs_df[self.all_osn_msgs_df['article_urls_count'] > 0]
+        self.__generate_article_urls_columns(self.all_osn_msgs_df[['msg_id', 'search_article_urls']].values)
+        # self.all_osn_msgs_df['article_urls_count'] = self.all_osn_msgs_df['article_urls'].apply(
+        #     lambda x: x.count(', ') + 1 if type(x) is str else 0)
+        self.all_osn_msgs_df = self.all_osn_msgs_df[self.all_osn_msgs_df['article_urls_count'] > 0]
 
         # 4. identify news_domains
         tk.next("identify news_domains")
         ndi = NewsDomainIdentifier(in_news_domain_classes_df['news_domain'].unique())
-        self.all_osn_msgs_df['news_domains'] = self.all_osn_msgs_df['article_urls'].apply(
-            lambda x: ndi.find_all_matches(x) if type(x) is str else [])
+        # self.all_osn_msgs_df['news_domains'] = self.all_osn_msgs_df['article_urls'].apply(lambda x: ndi.find_all_matches(x) if type(x) is str else [])
+        with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
+            self.all_osn_msgs_df['news_domains'] = pool.starmap(ndi_find_all_matches, [[ndi, v] for v in self.all_osn_msgs_df['article_urls']])
+
 
         # 5. identify class of each news_domain
         tk.next("identify class of each news_domain")
