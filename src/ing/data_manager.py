@@ -139,7 +139,7 @@ class DataManager:
         tk.next("identify news_domains")
         ndi = NewsDomainIdentifier(in_news_domain_classes_df['news_domain'].unique())
         # self.all_osn_msgs_df['news_domains'] = self.all_osn_msgs_df['article_urls'].apply(lambda x: ndi.find_all_matches(x) if type(x) is str else [])
-        with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
+        with multiprocessing.Pool(multiprocessing.cpu_count() - 1) as pool:
             self.all_osn_msgs_df['news_domains'] = pool.starmap(ndi_find_all_matches, [[ndi, v] for v in self.all_osn_msgs_df['article_urls']])
 
         # 5. identify class of each news_domain
