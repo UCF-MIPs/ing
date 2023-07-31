@@ -30,10 +30,12 @@ import numpy as np
 import datetime
 import pyinform
 import multiprocessing
-import typing
+from typing import List, Dict
 
 
-def get_events_of_actor(actor_id, dataset_df, actors_df, indv_actors_df, comm_actors_df, plat_actors_df):
+def get_events_of_actor(actor_id: pd.DataFrame, dataset_df: pd.DataFrame, actors_df: pd.DataFrame,
+                        indv_actors_df: pd.DataFrame, comm_actors_df: pd.DataFrame,
+                        plat_actors_df: pd.DataFrame) -> pd.DataFrame:
     """
     Returns the event list of the actor from the dataset.
 
@@ -44,13 +46,13 @@ def get_events_of_actor(actor_id, dataset_df, actors_df, indv_actors_df, comm_ac
     dataset_df: pd.DataFrame
         pandas dataframe containing the OSN messages as defined in Table 3.
     actors_df: pd.DataFrame
-        actors dataframe which contains the actor_type. Index should be actor_id. Defined in Table 6.
+        actors_df dataframe which contains the actor_type. Index should be actor_id. Defined in Table 6.
     indv_actors_df : pd.DataFrame
-        individual actors dataframe with actor_id as index. Defined in Table 7.
+        individual actors_df dataframe with actor_id as index. Defined in Table 7.
     comm_actors_df : pd.DataFrame
-        community (or group) actors dataframe with actor_id as index. Defined in Table 8.
+        community (or group) actors_df dataframe with actor_id as index. Defined in Table 8.
     plat_actors_df : pd.DataFrame
-        platform actors dataframe with actor_id as index. Defined in Table 9.
+        platform actors_df dataframe with actor_id as index. Defined in Table 9.
 
     Returns
     -------
@@ -68,7 +70,7 @@ def get_events_of_actor(actor_id, dataset_df, actors_df, indv_actors_df, comm_ac
         return dataset_df[dataset_df['user_id'] == user_id]
     elif actor_type == 'comm':
         user_list = comm_actors_df.loc[actor_id]['user_id']
-        # if community has only one user dont run the code for it 
+        # if community has only one user don't run the code for it
         # (detected by making sure we get a series for the user_list)
         # in such case we return a dataframe with 0 records
         if type(user_list) is pd.Series:
@@ -109,7 +111,8 @@ def generate_timeseries_index(start_time, end_time, frequency):
     return pd.DatetimeIndex(pd.date_range(start=start_time, end=end_time, freq=frequency))
 
 
-def resample_binary_timeseries(timeseries, time_index, frequency, classes):
+def resample_binary_timeseries(timeseries_df: pd.DataFrame, required_datetime_index: pd.DatetimeIndex,
+                               frequency: str, classes: List[str]) -> Dict[str, np.ndarray]:
     """
     Resamples the given timeseries (index must be a datetime) by the given frequency and fills values accordingly
      to match the given time_index series. The value column of the returned series will be binary
@@ -118,13 +121,13 @@ def resample_binary_timeseries(timeseries, time_index, frequency, classes):
 
     Parameters
     ----------
-    timeseries: pd.DataFrame
+    timeseries_df: 
         a pandas dataframe with index set to a datetime.
-    time_index: pd.DatetimeIndex
+    required_datetime_index: 
         The timeseries index for given frequency. This will be the index of the returned series
-    frequency: str
+    frequency: 
         a string value representing the frequency of resampling. e.g. 'D', '12H', '15min'
-    classes: typing.List[str]
+    classes: 
         unique values of the 'class' column. e.g. ['UF','UM','TF','TM']
 
     Returns
@@ -134,8 +137,8 @@ def resample_binary_timeseries(timeseries, time_index, frequency, classes):
     """
     retval = {}
     for this_class in classes:
-        retval[this_class] = timeseries[timeseries['class'] == this_class].resample(frequency).apply(
-            lambda x: 1 if len(x) > 0 else 0).iloc[:, 0].rename('events').reindex(time_index, fill_value=0).values
+        retval[this_class] = timeseries_df[timeseries_df['class'] == this_class].resample(frequency).apply(
+            lambda x: 1 if len(x) > 0 else 0).iloc[:, 0].rename('events').reindex(required_datetime_index, fill_value=0).values
     return retval
 
 
@@ -158,6 +161,7 @@ def multiprocess_resample_actor_binary_timeseries(ordered_actor_id_events_list, 
         a string value representing the frequency of resampling. e.g. 'D', '12H', '15min'
     classes: typing.List[str]
         unique values of the 'class' column. e.g. ['UF','UM','TF','TM']
+        These are values from the "class" column of the dataframe
 
     Returns
     -------
@@ -211,19 +215,21 @@ def calculate_te_values(src_actor_id, tgt_actor_id, src_timeseries_dict, tgt_tim
     return [src_actor_id, tgt_actor_id] + te_values_list
 
 
-def multiprocess_run_calculate_te_edge_list(ordered_actor_id_list, ordered_actor_timeseries_dict_list, classes):
+def multiprocess_run_calculate_te_edge_list(ordered_actor_id_list: List[str],
+                                            ordered_actor_timeseries_dict_list: Dict[str, np.ndarray],
+                                            classes: List[str]) -> List[List]:
     """
     Utilize multiprocessing Pool for calculating all transfer entropy values using the calculate_te_values function.
     Returns a list of calculate_te_values function returns for the provided input parameters.
 
     Parameters
     ----------
-    ordered_actor_id_list: typing.List[str]
+    ordered_actor_id_list:
         the ordered list of actor_id values.
-    ordered_actor_timeseries_dict_list: typing.Dict[str, np.ndarray]
+    ordered_actor_timeseries_dict_list:
         a dictionary of lists where each element is an array of binary values (0s and 1s)
         which represent the binary timeseries. keys are the classes.
-    classes: typing.List[str]
+    classes:
         unique values of the 'class' column. e.g. ['UF','UM','TF','TM']
     Returns
     -------
@@ -249,9 +255,9 @@ def multiprocess_run_calculate_te_edge_list(ordered_actor_id_list, ordered_actor
 
 
 def generate_te_edge_list(actor_id_list, all_events_df, actors_df, indv_actors_df, comm_actors_df, plat_actors_df,
-                          frequency, start_date, end_date, classes=['UF', 'UM', 'TF', 'TM']):
+                          frequency, start_date, end_date, classes=('UF', 'UM', 'TF', 'TM')):
     """
-    Calculates the transfer entropy based edge weights for the given set of actors.
+    Calculates the transfer entropy based edge weights for the given set of actors_df.
 
     Parameters
     ----------
@@ -262,15 +268,19 @@ def generate_te_edge_list(actor_id_list, all_events_df, actors_df, indv_actors_d
     comm_actors_df :
     plat_actors_df :
     frequency :
+        A string value such as "2D", "3H" representing the size of the time window.
     start_date :
+        Start datetime
     end_date :
+        End datetime
     classes :
+        Classes of
 
     Returns
     -------
 
     """
-    # generate time_index
+    # generate_data_tables time_index
     #start_date = all_events_df['datetime'].dt.date.min()
     #end_date = all_events_df['datetime'].dt.date.max() + datetime.timedelta(days=1)
     print(f"Filtering data available from {start_date} to {end_date}")
@@ -283,7 +293,7 @@ def generate_te_edge_list(actor_id_list, all_events_df, actors_df, indv_actors_d
          actor_id in actor_id_list],
         datetime_index, frequency, classes)
     print("Running TE edge list calc...")
-    #print(actor_timeseries_dict_list)
+    #print(in_actor_timeseries_dict_list)
     # calculate te values
     src_tgt_te_list = multiprocess_run_calculate_te_edge_list(actor_id_list, actor_timeseries_dict_list, classes)
     print("Calculation done. Creating dataframe...")
