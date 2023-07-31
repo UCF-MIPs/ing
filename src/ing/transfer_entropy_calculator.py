@@ -58,6 +58,7 @@ def get_actor_time_series(in_actor_id: str, in_data_manager: DataManager, in_dat
 
 def calculate_transfer_entropy_data(in_src_idx: int, in_src_actor_id: str,
                                     in_tgt_idx: int, in_tgt_actor_id: str,
+                                    in_period_start_idx: int, in_period_end_idx: int,
                                     in_comparison_pairs_list: List[Tuple[str]],
                                     in_actor_timeseries_dict_list: List[Dict[str, np.ndarray]]) -> List[Union[str, float]]:
     """
@@ -74,6 +75,10 @@ def calculate_transfer_entropy_data(in_src_idx: int, in_src_actor_id: str,
         Index of the target actor in the in_actor_timeseries_dict_list
     in_tgt_actor_id :
         actor_id of the target actor
+    in_period_start_idx :
+        inclusive Start index of the timeseries slice
+    in_period_end_idx :
+        exclusive End index of the timeseries slice
     in_comparison_pairs_list :
         comparison pairs list of classes
     in_actor_timeseries_dict_list :
@@ -86,9 +91,10 @@ def calculate_transfer_entropy_data(in_src_idx: int, in_src_actor_id: str,
          te_valN is the corresponding TE value for the given comparison pair at Nth index in in_comparison_pairs_list.
     """
     print(f" {in_src_idx}->{in_tgt_idx} ", end=" ")
-    te_values_list = [pyinform.transfer_entropy(in_actor_timeseries_dict_list[in_src_idx][src_class],
-                                                in_actor_timeseries_dict_list[in_tgt_idx][tgt_class], 1) for
-                      src_class, tgt_class in in_comparison_pairs_list]
+    te_values_list = [pyinform.transfer_entropy(
+        in_actor_timeseries_dict_list[in_src_idx][src_class][in_period_start_idx:in_period_end_idx],
+        in_actor_timeseries_dict_list[in_tgt_idx][tgt_class][in_period_start_idx:in_period_end_idx], 1)
+        for src_class, tgt_class in in_comparison_pairs_list]
     data_row = [in_src_actor_id, in_tgt_actor_id]
     data_row.extend(te_values_list)
     return data_row
@@ -129,51 +135,56 @@ class TransferEntropyCalculator:
             'end_date': pd.Series([dw + init_window for dw in dynamic_windows])
         })
         # remove days that are out of end date boundary
-        dwindows_df = dwindows_df[dwindows_df['end_date'] < in_end_date + datetime.timedelta(days=in_shift_days)]
+        drop_index = dwindows_df[dwindows_df['end_date'] >= in_end_date + datetime.timedelta(days=in_shift_days)].index
+        dwindows_df.drop(drop_index, inplace=True)
         return dwindows_df
 
-    # def calculate_te_network_series(self, in_actor_id_list: List[str],
-    #                                 in_start_date: datetime.datetime,
-    #                                 in_end_date: datetime.datetime,
-    #                                 in_frequency: str,
-    #                                 in_window_shift_by_days):
-    #     # Get the moving/growing window start points for the given duration by the given shift size
-    #     print(f"Start Date : {in_start_date}")
-    #     print(f"End Date : {in_end_date}")
-    #     print(f"Window Shift By : {WINDOW_SHIFT_BY_DAYS}")
-    #     print(f"Init Window Size : {INIT_WINDOW_SIZE}")
-    #     dynamic_windows = pd.date_range(start=in_start_date, end=in_end_date, freq=f"{WINDOW_SHIFT_BY_DAYS}D",
-    #                                     inclusive='left')
-    #     print(dynamic_windows)
-    #
-    #     # Moving/Growing windows start and end dates
-    #     IS_GROWING_WINDOW = True
-    #     dwindows_df = pd.DataFrame({
-    #         'start_date': pd.Series(dynamic_windows[0] if IS_GROWING_WINDOW else dw for dw in dynamic_windows),
-    #         'end_date': pd.Series([dw + INIT_WINDOW_SIZE for dw in dynamic_windows])
-    #     })
-    #     # remove days that are out of end date boundary
-    #     dwindows_df = dwindows_df[dwindows_df['end_date'] < in_end_date + datetime.timedelta(days=WINDOW_SHIFT_BY_DAYS)]
-    #     dwindows_df
+    def calculate_te_network_series(self, in_actor_id_list: List[str],
+                                    in_start_date: datetime.datetime,
+                                    in_end_date: datetime.datetime,
+                                    in_frequency: str,
+                                    in_window_shift_by_days: int,
+                                    in_init_window_days: int,
+                                    in_as_growing: bool):
+        # calculate all timeseries data
+        datetime_windows_df = self.calculate_a_date_series(in_start_date, in_end_date, in_window_shift_by_days, in_init_window_days, in_as_growing)
+        window_fixed_start_date = datetime_windows_df.iloc[0]["start_date"]
+        window_fixed_end_date = datetime_windows_df.iloc[-1]["end_date"]
+        actor_timeseries_dict_list = self.calculate_actor_to_timeseries_dict_list(in_actor_id_list,
+                                                                                  window_fixed_start_date,
+                                                                                  window_fixed_end_date,
+                                                                                  in_frequency)
+        # feed only required timeseries data to each period
+        datetime_series = pd.Series(self.datetime_index)
+        for current_start_date, current_end_date in datetime_windows_df.values:
+            print("calculating te...")
+            current_datetime_index = self.datetime_index[(current_start_date <= self.datetime_index) & (self.datetime_index <= current_end_date)]
+            period_start_index = datetime_series[datetime_series == current_datetime_index[0]].index[0]
+            period_end_index = datetime_series[datetime_series == current_datetime_index[-1]].index[0] + 1
+            print("{} ==> {} to {}".format(current_datetime_index, period_start_index, period_end_index))
+            te_df = self.calculate_te_network(in_actor_id_list, period_start_index, period_end_index, actor_timeseries_dict_list)
+            print("all done!")
+            file_name = "actor_te_edges_df_{}_{}".format(current_start_date.strftime('%Y_%m_%d'), current_end_date.strftime('%Y_%m_%d'))
+            folder_type = "growing" if in_as_growing else "moving"
+            compression_options = dict(method='zip', archive_name=f'{file_name}.csv')
+            te_df.to_csv(f"./OUTPUTS/dynamic/{folder_type}/{file_name}.csv.zip", index=False, compression=compression_options)
+            print("saved")
 
-    def calculate_te_network_step1(self, in_actor_id_list: List[str], in_start_date: datetime.datetime, in_end_date: datetime.datetime, in_frequency: str):
+    def calculate_actor_to_timeseries_dict_list(self, in_actor_id_list: List[str], in_start_date: datetime.datetime, in_end_date: datetime.datetime, in_frequency: str):
         self.start_date = in_start_date
         self.end_date = in_end_date
         self.frequency = in_frequency
         self.datetime_index = pd.date_range(start=self.start_date, end=self.end_date, freq=self.frequency)
-
         self.data_manager.filter_osn_msgs_view(self.start_date, self.end_date)
-
         print("calculating actor timeseries dictionaries...")
-        actor_timeseries_dict_list = self._calculate_actor_to_timeseries_dict_list(in_actor_id_list)
+        actor_timeseries_dict_list = self._multpool_calculate_actor_to_timeseries_dict_list(in_actor_id_list)
         return actor_timeseries_dict_list
 
-    def calculate_te_network_step2(self, in_actor_id_list: List[str], actor_timeseries_dict_list):
+    def calculate_te_network(self, in_actor_id_list: List[str], in_period_start_index: int, in_period_end_index: int, actor_timeseries_dict_list: List[Dict[str, np.ndarray]]):
         print("calculating te sets...")
-        all_te_data = self._calculate_transfer_entropy_sets(in_actor_id_list, actor_timeseries_dict_list)
+        all_te_data = self._multpool_calculate_transfer_entropy_sets(in_actor_id_list, in_period_start_index, in_period_end_index, actor_timeseries_dict_list)
         print("creating dataframe...")
-        return pd.DataFrame(all_te_data,
-                            columns=["Source", "Target"] + [f"{src}_{tgt}" for src, tgt in self.comparison_pairs_list])
+        return pd.DataFrame(all_te_data, columns=["Source", "Target"] + [f"{src}_{tgt}" for src, tgt in self.comparison_pairs_list])
 
     def __init_comparison_pairs_list(self, in_classes: List[str]):
         self.comparison_pairs_list = []
@@ -188,9 +199,14 @@ class TransferEntropyCalculator:
                     # print(c, src, tgt, f"{src}->{tgt}")
                     # c += 1
 
-    def _calculate_transfer_entropy_sets(self, in_actor_id_list: List[str], in_actor_timeseries_dict_list: List[Dict[str, np.ndarray]]):
+    def _multpool_calculate_transfer_entropy_sets(self,
+                                                  in_actor_id_list: List[str],
+                                                  in_period_start_index: int,
+                                                  in_period_end_index: int,
+                                                  in_actor_timeseries_dict_list: List[Dict[str, np.ndarray]]):
         params_list = [[src_idx, in_actor_id_list[src_idx],
                         tgt_idx, in_actor_id_list[tgt_idx],
+                        in_period_start_index, in_period_end_index,
                         self.comparison_pairs_list, in_actor_timeseries_dict_list]
                        for src_idx in range(len(in_actor_id_list))
                        for tgt_idx in range(len(in_actor_id_list))
@@ -199,10 +215,10 @@ class TransferEntropyCalculator:
             results = p.starmap(calculate_transfer_entropy_data, params_list)
         return results
 
-    def _calculate_actor_to_timeseries_dict_list(self, in_actor_id_list: List[str]) -> List[Dict[str, np.ndarray]]:
+    def _multpool_calculate_actor_to_timeseries_dict_list(self, in_actor_id_list: List[str]) -> List[Dict[str, np.ndarray]]:
         """
         Calculates a list of dictionaries.
-        Order of the list is correspondent to the index of actors_df of DataManager
+        Order of the list is correspondent to the index of in_actor_id_list parameter
         Each dictionary is an output of the get_actor_time_series function.
         Returns
         -------
