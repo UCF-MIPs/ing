@@ -46,9 +46,9 @@ class RedditDataReader(IDataSourceReader):
                          usecols=self.required_reddit_submissions_column_names)
         df['datetime'] = pd.to_datetime(df['datetime'], format="%Y-%m-%d %H:%M:%S.%f", utc=True)
         df = df.rename(columns=self.reddit_submissions_column_dict)
+        df['search_article_urls'] = df.apply(lambda row: ", ".join([row[col] for col in df.columns if type(row[col]) is str]), axis=1)
         df['parent_source_msg_id'] = ""
         df['platform'] = "reddit.com"
-        df['article_urls'] = ""
         df['parent_source_user_id'] = ""
         return df
 
@@ -57,9 +57,9 @@ class RedditDataReader(IDataSourceReader):
                          usecols=self.required_reddit_comments_column_names)
         df['datetime'] = pd.to_datetime(df['datetime'], format="%Y-%m-%d %H:%M:%S.%f", utc=True)
         df = df.rename(columns=self.reddit_comments_column_dict)
+        df['search_article_urls'] = df.apply(lambda row: ", ".join([row[col] for col in df.columns if type(row[col]) is str]), axis=1)
         df['title'] = df['content']
         df['platform'] = "reddit.com"
-        df['article_urls'] = ""
         df['parent_source_user_id'] = ""
         return df
 

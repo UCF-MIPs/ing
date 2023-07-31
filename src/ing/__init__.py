@@ -1,3 +1,7 @@
 from .any_data_source_reader import AnyDataSourceReader
 from .data_manager import DataManager
 from .transfer_entropy_calculator import TransferEntropyCalculator
+from .news_domain_identifier import NewsDomainIdentifier
+from .news_domain_classifier import NewsDomainClassifier
+from .url_expander import URLExpander
+from .detect_URLs import detect_URLs
