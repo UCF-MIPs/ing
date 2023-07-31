@@ -6,7 +6,7 @@ import sys, os
 import datetime
 
 sys.path.insert(0, os.path.abspath('../src'))
-print(os.path.abspath('../src'))
+print(os.path.abspath('../src'), os.getppid(), os.getpid())
 # ---------------------------------------
 
 """ 
@@ -42,7 +42,7 @@ import glob
 
 # DATA_DIRECTORY_LIST = ["s3://mips-main/initial_data_collection/raw_data/brandwatch/", "s3://mips-main/initial_data_collection/TE_ready_data/V2/"]  # DONE
 DATA_DIRECTORY_LIST = ["s3://mips-phase-2/initial_query_data/raw_data/brandwatch/"]
-#DATA_DIRECTORY_LIST = [ "C:/STUFF/RESEARCH/Brandwatch/mariupol_hospital_clean", "C:/STUFF/RESEARCH/smyrna/Smyrna/data_collection/test_ing"]
+# DATA_DIRECTORY_LIST = [ "C:/STUFF/RESEARCH/Brandwatch/mariupol_hospital_clean", "C:/STUFF/RESEARCH/smyrna/Smyrna/data_collection/test_ing"]
 # DATA_DIRECTORY_LIST = ["C:/STUFF/RESEARCH/smyrna/Smyrna/data_collection/test_ing/indv"]
 
 NEWS_DOMAIN_TO_CLASS_FILE = "s3://mips-main-2/UFTM_classification-v2/news_table-v3-UT60.csv"
@@ -50,19 +50,19 @@ NEWS_DOMAIN_TO_CLASS_FILE = "s3://mips-main-2/UFTM_classification-v2/news_table-
 
 START_DATE = datetime.datetime(2022, 1, 1, tzinfo=datetime.timezone.utc)
 END_DATE = datetime.datetime(2022, 5, 1, tzinfo=datetime.timezone.utc)
-FREQUENCY = '6H'
+FREQUENCY = '12H'
 MIN_PLAT_SIZE = 500
 MIN_ACTIVITY_PER_MONTH = 30
 MIN_TOTAL_RECEIVED_RETWEETS = 15
-WINDOW_SHIFT_BY_DAYS = 7
-INIT_WINDOW_SIZE_BY_DAYS = 7
+WINDOW_SHIFT_BY_DAYS = 1
+INIT_WINDOW_SIZE_BY_DAYS = 1
 AS_GROWING = True
 
 paths = []
 for data_dir in DATA_DIRECTORY_LIST:
     paths += s3.glob(os.path.join(data_dir, "*.csv*"))
 paths = [f"s3://{p}" for p in paths]
-print(paths)
+# print(paths)
 
 news_domain_classes_df = pd.read_csv(NEWS_DOMAIN_TO_CLASS_FILE,
                                      usecols=['Domain', 'tufm_class', 'Language'])
@@ -79,12 +79,9 @@ if __name__ == "__main__":
     # let data manager handle data
     data_manager = ing.DataManager("./OUTPUTS")
     data_manager.read_data_files(paths)
-    # data_manager.all_osn_msgs_df
 
     # preprocess
     data_manager.preprocess(news_domain_classes_df, START_DATE, END_DATE)
-    # data_manager.all_osn_msgs_df
-
 
     # generate tables
     min_msg_count = MIN_ACTIVITY_PER_MONTH * (END_DATE - START_DATE).days // 30
@@ -104,33 +101,14 @@ if __name__ == "__main__":
           data_manager.actors_df[(data_manager.actors_df["actor_type"] == "plat") &
                                  (data_manager.actors_df["num_users"] > MIN_PLAT_SIZE)].reset_index())
 
-    # actor_id_list = data_manager.indv_actors_df.index[:]
-    
     actor_id_list = data_manager.indv_actors_df[(data_manager.indv_actors_df["msgs_count"] > min_msg_count) & (data_manager.indv_actors_df["received_share_count"] > MIN_TOTAL_RECEIVED_RETWEETS)].index.to_list()
     print(f"Actors #: {len(actor_id_list)}")
 
-    data_windows_df = ing.TransferEntropyCalculator.calculate_a_date_series(START_DATE, END_DATE, WINDOW_SHIFT_BY_DAYS, INIT_WINDOW_SIZE_BY_DAYS, AS_GROWING)
+    # data_windows_df = ing.TransferEntropyCalculator.calculate_a_date_series(START_DATE, END_DATE, WINDOW_SHIFT_BY_DAYS, INIT_WINDOW_SIZE_BY_DAYS, AS_GROWING)
 
-    for idx, row in data_windows_df.iterrows():
-        # profiler_obj = cProfile.Profile()
-        # profiler_obj.enable()
-        print("calculating te...")
-        te_calculator = ing.TransferEntropyCalculator(data_manager, in_add_superclasses=False)
-        current_start_date = row["start_date"]
-        current_end_date = row["end_date"]
-        actor_timeseries_dict_list = te_calculator.calculate_te_network_step1(actor_id_list, current_start_date, current_end_date, FREQUENCY)
-        print(actor_timeseries_dict_list)
-        te_df = te_calculator.calculate_te_network_step2(actor_id_list, actor_timeseries_dict_list)
-        # profiler_obj.disable()
-        print("all done!")
-        file_name = "actor_te_edges_df_{}_{}".format(str(current_start_date).replace("-", "_"), str(current_end_date).replace("-", "_"))
-        folder_type = "growing" if AS_GROWING else "moving"
-        compression_options = dict(method='zip', archive_name=f'{file_name}.csv')
-        te_df.to_csv(f"./OUTPUTS/dynamic/{folder_type}/{file_name}.csv.zip", index=False, compression=compression_options)
-        print("saved")
+    te_calculator = ing.TransferEntropyCalculator(data_manager, in_add_superclasses=False)
 
-    # stats = pstats.Stats(profiler_obj).strip_dirs().sort_stats("cumtime")
-    # stats.print_stats(50)  # top 10 rows
+    te_calculator.calculate_te_network_series(actor_id_list, START_DATE, END_DATE, FREQUENCY, WINDOW_SHIFT_BY_DAYS, INIT_WINDOW_SIZE_BY_DAYS, AS_GROWING)
 
 
 #
