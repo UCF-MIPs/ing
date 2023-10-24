@@ -68,29 +68,27 @@ scenario_to_datafiles = { os.path.basename(os.path.dirname(this_path)): [f"s3://
 pprint.pprint(scenario_to_datafiles)
 
 
-def calculate_te_for_scenario(in_scenario_name):
+def calculate_te_for_scenario(in_scenario_name, 
+                              in_frequency = '12H',
+                              in_min_plat_size = 200,
+                              in_window_shift_by_days = 4,
+                              in_init_window_shift_by_days = 4):
     print(in_scenario_name)
 
     START_DATE = scenario_to_date[in_scenario_name] - datetime.timedelta(14)
     END_DATE = scenario_to_date[in_scenario_name] + datetime.timedelta(35)
 
-    FREQUENCY = '12H'
-    MIN_PLAT_SIZE = 200
-    WINDOW_SHIFT_BY_DAYS = 1
-    INIT_WINDOW_SIZE_BY_DAYS = 1
-    AS_GROWING = True
-
-    paths = scenario_to_datafiles[in_scenario_name]
-    print(paths)
-
-    required_dirs = [f"./OUTPUTS/{in_scenario_name}", f"./OUTPUTS/{in_scenario_name}/dynamic", f"./OUTPUTS/{in_scenario_name}/dynamic/growing", f"./OUTPUTS/{in_scenario_name}/dynamic/moving"]
+    required_dirs = [f"./OUTPUTS/{in_scenario_name}", 
+                     f"./OUTPUTS/{in_scenario_name}/dynamic", 
+                     f"./OUTPUTS/{in_scenario_name}/dynamic/growing", 
+                     f"./OUTPUTS/{in_scenario_name}/dynamic/moving"]
     for target_dir in required_dirs:
         if not os.path.exists(target_dir):
             os.mkdir(target_dir)
 
     # let data manager handle data
     data_manager = ing.DataManager(f"./OUTPUTS/{in_scenario_name}")
-    data_manager.read_data_files(paths)
+    data_manager.read_data_files(scenario_to_datafiles[in_scenario_name])
     
     if data_manager.all_osn_msgs_df.datetime.min() <= START_DATE and END_DATE <= data_manager.all_osn_msgs_df.datetime.max():
         print("Data found in the given range.")
@@ -99,7 +97,7 @@ def calculate_te_for_scenario(in_scenario_name):
         data_manager.preprocess(news_domain_classes_df, START_DATE, END_DATE)
 
         # generate tables
-        data_manager.generate_data_tables(MIN_PLAT_SIZE, None)
+        data_manager.generate_data_tables(in_min_plat_size, None)
 
         print(f"Start: {START_DATE} \nEnd: {END_DATE}")
         print(f"Period length: {END_DATE - START_DATE}")
@@ -113,17 +111,24 @@ def calculate_te_for_scenario(in_scenario_name):
         print(f"Users with more than {min_msg_count} messsages posted\n",
               data_manager.all_users_df[data_manager.all_users_df["msgs_count"] >= min_msg_count].reset_index())
 
-        print(f"Platform Actors with more than {MIN_PLAT_SIZE} users\n",
+        print(f"Platform Actors with more than {in_min_plat_size} users\n",
               data_manager.actors_df[(data_manager.actors_df["actor_type"] == "plat") &
-                                     (data_manager.actors_df["num_users"] >= MIN_PLAT_SIZE)].reset_index())
+                                     (data_manager.actors_df["num_users"] >= in_min_plat_size)].reset_index())
 
         actor_id_list = data_manager.indv_actors_df[(data_manager.indv_actors_df["msgs_count"] >= min_msg_count)].index.to_list()
         print(f"Actors #: {len(actor_id_list)}")
 
-        te_calculator = ing.TransferEntropyCalculator(data_manager, in_add_superclasses=False)
-
-        te_calculator.calculate_te_network_series(actor_id_list, START_DATE, END_DATE, FREQUENCY, WINDOW_SHIFT_BY_DAYS, INIT_WINDOW_SIZE_BY_DAYS, AS_GROWING, data_manager.output_dir_path)
-        
+        for AS_GROWING in [True, False]:
+            te_calculator = ing.TransferEntropyCalculator(data_manager, in_add_superclasses=False)
+            folder_type = "growing" if AS_GROWING else "moving"
+            te_calculator.calculate_te_network_series(actor_id_list, 
+                                                      START_DATE, 
+                                                      END_DATE, 
+                                                      in_frequency, 
+                                                      in_window_shift_by_days, 
+                                                      in_init_window_shift_by_days, 
+                                                      AS_GROWING, 
+                                                      os.path.join(data_manager.output_dir_path, f"dynamic/{folder_type}"))
     else:
         print("Error: START_DATE and END_DATE are not within the data set.")
 
@@ -132,4 +137,5 @@ if __name__ == "__main__":
     
     for scenario_name in scenario_to_datafiles.keys():
         calculate_te_for_scenario(scenario_name)
-            
+        
+        
