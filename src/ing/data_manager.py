@@ -3,6 +3,7 @@ import os.path
 import datetime
 from typing import List, Tuple
 
+import numpy as np
 import pandas as pd
 
 from .news_domain_classifier import NewsDomainClassifier
@@ -65,6 +66,7 @@ class DataManager:
         self.all_osn_msgs_df = adsr.read_files_list(in_data_file_paths_list)
         self.filtered_osn_msgs_view_df = self.all_osn_msgs_df
         self.state = "RAW_DATA"
+        print(f"\t new shape: {self.all_osn_msgs_df.shape}")
         tk.done()
 
     def __generate_article_urls_columns(self, in_all_osn_msgs_msgid_and_text_values: List[Tuple[str, str]]) -> List[str]:
@@ -113,6 +115,8 @@ class DataManager:
         if in_end_date is not None:
             self.all_osn_msgs_df = self.all_osn_msgs_df[(self.all_osn_msgs_df['datetime'] <= in_end_date)]
         print(f"Number of data points in between [{in_start_date}] --> [{in_end_date}] duration : ({self.all_osn_msgs_df.shape[0]})")
+        
+        print(f"\t new shape: {self.all_osn_msgs_df.shape}")
 
         #  1. Remove nan
         tk.next("Remove nan")
@@ -121,12 +125,16 @@ class DataManager:
                                                       self.all_osn_msgs_df['source_user_id'].isna() |
                                                       self.all_osn_msgs_df['source_msg_id'].isna())].reset_index(
             drop=True)
+        
+        print(f"\t new shape: {self.all_osn_msgs_df.shape}")
 
         #  2. add msg_id
         tk.next("add msg_id")
         self.all_osn_msgs_df.rename_axis("msg_id", inplace=True)
         self.all_osn_msgs_df.reset_index(inplace=True)
         self.all_osn_msgs_df["msg_id"] = self.all_osn_msgs_df["msg_id"].apply(lambda x: f"m{x}")
+        
+        print(f"\t new shape: {self.all_osn_msgs_df.shape}")
 
         #  3. Add article urls related columns
         tk.next("Add article urls related columns")
@@ -134,6 +142,8 @@ class DataManager:
         # self.all_osn_msgs_df['article_urls_count'] = self.all_osn_msgs_df['article_urls'].apply(
         #     lambda x: x.count(', ') + 1 if type(x) is str else 0)
         self.all_osn_msgs_df = self.all_osn_msgs_df[self.all_osn_msgs_df['article_urls_count'] > 0]
+        
+        print(f"\t new shape: {self.all_osn_msgs_df.shape}")
 
         # 4. identify news_domains
         tk.next("identify news_domains")
@@ -141,30 +151,38 @@ class DataManager:
         # self.all_osn_msgs_df['news_domains'] = self.all_osn_msgs_df['article_urls'].apply(lambda x: ndi.find_all_matches(x) if type(x) is str else [])
         with multiprocessing.Pool(multiprocessing.cpu_count() - 1) as pool:
             self.all_osn_msgs_df['news_domains'] = pool.starmap(ndi_find_all_matches, [[ndi, v] for v in self.all_osn_msgs_df['article_urls']])
+            
+        print(f"\t new shape: {self.all_osn_msgs_df.shape}")
 
         # 5. identify class of each news_domain
         tk.next("identify class of each news_domain")
         ndc = NewsDomainClassifier(in_news_domain_classes_df, {'TF', 'TM', 'UF', 'UM'})
         self.all_osn_msgs_df['classes'] = self.all_osn_msgs_df['news_domains'].apply(
             lambda x: [ndc.get_class(nd) for nd in x])
+        
+        print(f"\t new shape: {self.all_osn_msgs_df.shape}")
 
         # 6. counts of each class marked at each class_X column
         tk.next("counts of each class marked at each class_X column")
         self.all_osn_msgs_df[['class_TM', 'class_TF', 'class_UM', 'class_UF']] = self.all_osn_msgs_df['classes'].apply(
             lambda x: pd.Series([x.count('TM'), x.count('TF'), x.count('UM'), x.count('UF')]))
+        
+        print(f"\t new shape: {self.all_osn_msgs_df.shape}")
 
         self.state = "CLEAN_DATA"
         tk.done()
 
-    def generate_data_tables(self, in_min_platform_size: int, in_min_user_messages_count: int):
+    def generate_data_tables(self, in_min_platform_size: int = None, in_min_user_messages_count: int = None):
         """
         Make sure this is run after running preprocess function.
         Parameters
         ----------
         in_min_platform_size :
             Minimum number of people in a filtered platform
+            If None, then platforms are included without filtering by size.
         in_min_user_messages_count :
             Minimum number of messages created by a filtered actor
+            If None, then all users are included without filtering by number of messges.
         """
         if self.state != "CLEAN_DATA":
             print(f"ERROR: CLEAN_DATA does not exist!\nDataManager state is {self.state}")
@@ -235,17 +253,17 @@ class DataManager:
 
         tk = TimeKeeper("generating user_id values")
         # create user_id and all_users_df object
-        temp_users_1 = self.all_osn_msgs_df.groupby(["platform", "source_user_id"], dropna=False).size().reset_index()[
+        temp_users_1 = self.all_osn_msgs_df.groupby(["platform", "source_user_id"], dropna=True).size().reset_index()[
             ["platform", "source_user_id"]]
         temp_users_2 = \
-            self.all_osn_msgs_df.groupby(["platform", "parent_source_user_id"], dropna=False).size().reset_index()[
+            self.all_osn_msgs_df.groupby(["platform", "parent_source_user_id"], dropna=True).size().reset_index()[
                 ["platform", "parent_source_user_id"]].rename(columns={"parent_source_user_id": "source_user_id"})
         self.all_users_df = pd.concat([temp_users_1, temp_users_2])
         self.all_users_df.drop_duplicates(subset=["platform", "source_user_id"], inplace=True, ignore_index=True)
-        self.all_users_df = self.all_users_df.groupby(["platform", "source_user_id"], dropna=False).size().rename(
+        self.all_users_df = self.all_users_df.groupby(["platform", "source_user_id"], dropna=True).size().rename(
             'num_users').reset_index().drop(columns=["num_users"]).rename_axis("user_id").reset_index()
         self.all_users_df["user_id"] = self.all_users_df["user_id"].apply(lambda x: f"u{x}")
-        user_num_msgs = self.all_osn_msgs_df.groupby(["platform", "source_user_id"], dropna=False).size().rename(
+        user_num_msgs = self.all_osn_msgs_df.groupby(["platform", "source_user_id"], dropna=True).size().rename(
             'msgs_count').reset_index()
         self.all_users_df = self.all_users_df.merge(user_num_msgs, how='left', on=["platform", "source_user_id"])
         self.all_users_df["msgs_count"].fillna(0, inplace=True)
@@ -257,7 +275,7 @@ class DataManager:
         src_user_to_user_id = self.all_users_df.set_index(["platform", "source_user_id"])["user_id"].to_dict()
         self.all_osn_msgs_df[['user_id', 'parent_user_id']] = self.all_osn_msgs_df.apply(lambda row: pd.Series([
             src_user_to_user_id[(row['platform'], row['source_user_id'])],
-            src_user_to_user_id[(row['platform'], row['parent_source_user_id'])]
+            src_user_to_user_id[(row['platform'], row['parent_source_user_id'])] if not pd.isnull(row['parent_source_user_id']) else None
         ]), axis=1)
         if in_dump_temp:
             self.__save_csv_zip_file(self.all_osn_msgs_df, 'temp_all_osn_msgs_df')
