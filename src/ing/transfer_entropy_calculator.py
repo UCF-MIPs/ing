@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple, Union
 import pyinform
 import pandas as pd
 import numpy as np
+import os.path
 
 from .data_manager import DataManager
 from .time_keeper import TimeKeeper
@@ -41,7 +42,7 @@ def get_actor_time_series(in_actor_id: str, in_data_manager: DataManager, in_dat
     -------
         Dictionary containing timeseries of the actor for each class.
     """
-    print(f" E:{in_actor_id} ", end=" ")
+    # print(f" E:{in_actor_id} ", end=" ")
     actor_events_df = in_data_manager.get_actors_msgs(in_actor_id, True)
     class_to_timeseries = {}
     for this_class in ["TF", "TM", "UF", "UM"]:
@@ -91,7 +92,7 @@ def calculate_transfer_entropy_data(in_src_idx: int, in_src_actor_id: str,
         Where src_actor_id, and tgt_actor_id are actor ids of source and target actors, and
          te_valN is the corresponding TE value for the given comparison pair at Nth index in in_comparison_pairs_list.
     """
-    print(f" {in_src_idx}->{in_tgt_idx} ", end=" ")
+    # print(f" {in_src_idx}->{in_tgt_idx} ", end=" ")
     te_values_list = [pyinform.transfer_entropy(
         in_actor_timeseries_dict_list[in_src_idx][src_class][in_period_start_idx:in_period_end_idx],
         in_actor_timeseries_dict_list[in_tgt_idx][tgt_class][in_period_start_idx:in_period_end_idx], 1)
@@ -146,7 +147,8 @@ class TransferEntropyCalculator:
                                     in_frequency: str,
                                     in_window_shift_by_days: int,
                                     in_init_window_days: int,
-                                    in_as_growing: bool):
+                                    in_as_growing: bool,
+                                    in_output_folder: str):
         tk = TimeKeeper("Calculate all timeseries data")
         datetime_windows_df = self.calculate_date_series(in_start_date, in_end_date, in_window_shift_by_days, in_init_window_days, in_as_growing)
         window_fixed_start_date = datetime_windows_df.iloc[0]["start_date"]
@@ -164,13 +166,13 @@ class TransferEntropyCalculator:
             current_datetime_index = self.datetime_index[(current_start_date <= self.datetime_index) & (self.datetime_index <= current_end_date)]
             period_start_index = datetime_series[datetime_series == current_datetime_index[0]].index[0]
             period_end_index = datetime_series[datetime_series == current_datetime_index[-1]].index[0] + 1
-            print("{} ==> {} to {}".format(current_datetime_index, period_start_index, period_end_index))
+            # print("{} ==> {} to {}".format(current_datetime_index, period_start_index, period_end_index))
             te_df = self.calculate_te_network(in_actor_id_list, period_start_index, period_end_index, actor_timeseries_dict_list)
             tk.next("Saving to file")
             file_name = "actor_te_edges_df_{}_{}".format(current_start_date.strftime('%Y_%m_%d'), current_end_date.strftime('%Y_%m_%d'))
             folder_type = "growing" if in_as_growing else "moving"
             compression_options = dict(method='zip', archive_name=f'{file_name}.csv')
-            te_df.to_csv(f"./OUTPUTS/dynamic/{folder_type}/{file_name}.csv.zip", index=False, compression=compression_options)
+            te_df.to_csv(os.path.join(in_output_folder, f"{file_name}.csv.zip"), index=False, compression=compression_options)
             print(f"Saved: {file_name}")
         tk.done()
 
