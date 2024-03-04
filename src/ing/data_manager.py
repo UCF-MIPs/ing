@@ -1,5 +1,6 @@
 import multiprocessing
 import os.path
+import csv
 import datetime
 from typing import List, Tuple
 
@@ -240,7 +241,7 @@ class DataManager:
         file_path = os.path.join(self.output_dir_path, f'{in_file_name}.csv.zip')
         compression_options = dict(method='zip', archive_name=f'{in_file_name}.csv')
         print(f"Dataframe: {in_file_name} \t shape: {in_dataframe.shape}\nSaving to : {os.path.abspath(file_path)}")
-        in_dataframe.to_csv(file_path, compression=compression_options)
+        in_dataframe.to_csv(file_path, quoting=csv.QUOTE_ALL, compression=compression_options)
 
     def __generate_user_id(self, in_dump_temp: bool = False):
         """

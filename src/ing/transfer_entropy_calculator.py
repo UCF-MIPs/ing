@@ -1,4 +1,5 @@
 import datetime
+import csv
 import multiprocessing
 from typing import Dict, List, Tuple, Union
 import pyinform
@@ -172,7 +173,7 @@ class TransferEntropyCalculator:
             file_name = "actor_te_edges_df_{}_{}".format(current_start_date.strftime('%Y_%m_%d'), current_end_date.strftime('%Y_%m_%d'))
             folder_type = "growing" if in_as_growing else "moving"
             compression_options = dict(method='zip', archive_name=f'{file_name}.csv')
-            te_df.to_csv(os.path.join(in_output_folder, f"{file_name}.csv.zip"), index=False, compression=compression_options)
+            te_df.to_csv(os.path.join(in_output_folder, f"{file_name}.csv.zip"), index=False, quoting=csv.QUOTE_ALL, compression=compression_options)
             print(f"Saved: {file_name}")
         tk.done()
 
