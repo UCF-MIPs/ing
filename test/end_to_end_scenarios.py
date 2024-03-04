@@ -51,7 +51,7 @@ news_domain_classes_df = pd.read_csv(NEWS_DOMAIN_TO_CLASS_FILE,
 news_domain_classes_df.rename(columns={'Domain': 'news_domain', 'tufm_class': 'class', 'Language': 'lang'},
                               inplace=True)
 
-required_dirs = ["./OUTPUTS"]
+required_dirs = ["./OUTPUTS", "./OUTPUTS/scenarios"]
 for target_dir in required_dirs:
     if not os.path.exists(target_dir):
         os.mkdir(target_dir)
@@ -71,23 +71,23 @@ pprint.pprint(scenario_to_datafiles)
 def calculate_te_for_scenario(in_scenario_name, 
                               in_frequency = '12H',
                               in_min_plat_size = 200,
-                              in_window_shift_by_days = 4,
+                              in_window_shift_by_days = 2,
                               in_init_window_shift_by_days = 4):
     print(in_scenario_name)
 
     START_DATE = scenario_to_date[in_scenario_name] - datetime.timedelta(14)
     END_DATE = scenario_to_date[in_scenario_name] + datetime.timedelta(35)
 
-    required_dirs = [f"./OUTPUTS/{in_scenario_name}", 
-                     f"./OUTPUTS/{in_scenario_name}/dynamic", 
-                     f"./OUTPUTS/{in_scenario_name}/dynamic/growing", 
-                     f"./OUTPUTS/{in_scenario_name}/dynamic/moving"]
+    required_dirs = [f"./OUTPUTS/scenarios/{in_scenario_name}", 
+                     f"./OUTPUTS/scenarios/{in_scenario_name}/dynamic", 
+                     f"./OUTPUTS/scenarios/{in_scenario_name}/dynamic/growing", 
+                     f"./OUTPUTS/scenarios/{in_scenario_name}/dynamic/moving"]
     for target_dir in required_dirs:
         if not os.path.exists(target_dir):
             os.mkdir(target_dir)
 
     # let data manager handle data
-    data_manager = ing.DataManager(f"./OUTPUTS/{in_scenario_name}")
+    data_manager = ing.DataManager(f"./OUTPUTS/scenarios/{in_scenario_name}")
     data_manager.read_data_files(scenario_to_datafiles[in_scenario_name])
     
     if data_manager.all_osn_msgs_df.datetime.min() <= START_DATE and END_DATE <= data_manager.all_osn_msgs_df.datetime.max():
@@ -104,7 +104,7 @@ def calculate_te_for_scenario(in_scenario_name,
         
         print(data_manager.indv_actors_df["msgs_count"].value_counts().sort_index(ascending=False).cumsum())
         x_msgcount, y_numusers = data_manager.indv_actors_df["msgs_count"].value_counts().sort_index(ascending=False).cumsum().reset_index().values.T
-        point = get_elbow(x_msgcount, y_numusers, True, f"./OUTPUTS/{in_scenario_name}/elbow_indvactors_vs_msgcount.png")
+        point = get_elbow(x_msgcount, y_numusers, True, f"./OUTPUTS/scenarios/{in_scenario_name}/elbow_indvactors_vs_msgcount.png")
         min_msg_count = point.x
         
         print(f"Min msg count per actor: {min_msg_count}")
